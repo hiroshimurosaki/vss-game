@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>game_master</name>
+  <version>0.0.0</version>
+  <description>Arbitro da partida, cronometro, ranking e telas da feira</description>
+  <maintainer email="fernando.murusaki@unesp.br">Carrossel Caipira</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>shared_interfaces</depend>
+  <depend>python3-aiohttp</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

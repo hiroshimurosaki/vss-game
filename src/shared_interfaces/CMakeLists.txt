@@ -30,6 +30,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RobotState.msg"
   "msg/GameData.msg"
   "msg/AiDebug.msg"
+  "msg/GameStatus.msg"
+  "msg/HighScore.msg"
+  "msg/HighScoreList.msg"
   DEPENDENCIES builtin_interfaces sensor_msgs
 )
 
