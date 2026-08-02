@@ -26,6 +26,10 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MotorVelocitiesList.msg"
   "msg/RobotController.msg"
   "msg/JoyList.msg"
+  "msg/BallState.msg"
+  "msg/RobotState.msg"
+  "msg/GameData.msg"
+  "msg/AiDebug.msg"
   DEPENDENCIES builtin_interfaces sensor_msgs
 )
 

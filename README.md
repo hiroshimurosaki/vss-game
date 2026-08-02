@@ -17,8 +17,9 @@ e do [VSS_Arduino](https://github.com/carrossel-caipira/VSS_Arduino).
 | `robot_communication` — ponte ROS ↔ serial | pronto |
 | `startup` — launch files | pronto |
 | `firmware/` — TX bridge e firmware do robô | pronto, falta validar no hardware |
+| `simulator` — física do campo + GUI no navegador | pronto |
+| `ai_player` — o adversário | pronto |
 | `vision_game` — detecção da bola e dos robôs | a fazer |
-| `ai_player` — o adversário | a fazer |
 | `game_master` — regras, cronômetro, placar | a fazer |
 | `scoreboard` — a tela da TV | a fazer |
 
@@ -103,6 +104,135 @@ ros2 launch startup teleop.py num_robots:=1 use_keyboard:=true
 # com logs detalhados
 ros2 launch startup teleop.py num_robots:=2 verbose:=true
 ```
+
+## Simulador — desenvolvendo sem hardware
+
+```bash
+ros2 launch startup sim.py
+```
+
+Abra **http://localhost:8080**. `WASD` dirige o robô 1, arraste a bola e os robôs
+com o mouse, solte a bola em movimento para chutar.
+
+O ponto do simulador não é conveniência, é arquitetura: ele substitui o hardware
+**exatamente na fronteira dele**.
+
+|  | com hardware | no simulador |
+|---|---|---|
+| entra o comando | `radio_communication` → rádio | `sim_node` aplica a física |
+| sai a posição | `vision_game` → `/game_data` | `sim_node` → `/game_data` |
+| entra o jogador | `game_controller_node` → `/joy_1` | teclado da GUI → `/joy_1` |
+
+Todo o miolo — `joy_aggregator`, `direction`, `special_controls`, `cinematica` —
+é o mesmo código nos dois casos. A IA escrita contra o simulador funciona nos
+robôs sem alteração.
+
+### Convenção do jogo
+
+**Robô 0 é a IA**, defende o gol da esquerda (magenta). **Robô 1 é o visitante**,
+defende o da direita (ciano).
+
+### Testando a IA contra uma visão imperfeita
+
+A câmera real treme e atrasa. Uma IA afinada contra posições perfeitas fica
+nervosa quando encontra a câmera:
+
+```bash
+# posições com ruído de 5 mm e 80 ms de atraso
+ros2 launch startup sim.py vision_noise:=0.005 vision_delay:=0.08
+```
+
+Desenvolva com os dois em zero; antes de dar a IA por pronta, ligue e veja se
+ela ainda joga.
+
+### A física
+
+`src/simulator/simulator/physics.py` não depende de ROS — dá para importar e
+testar direto. Modela o que importa para afinar a IA: inércia do motor
+(`accel_tau`), atrito da bola, colisão com impulso, quique nas paredes, robôs que
+não se atravessam, e o fato de que **comando de roda não é velocidade de roda**.
+
+Não modela: derrapagem, queda de bateria, folga da transmissão. Se a IA depender
+de precisão fina de posicionamento, desconfie — o robô real não tem essa precisão.
+
+## A IA
+
+```bash
+ros2 launch startup sim.py difficulty:=DIFICIL
+```
+
+Ela **publica um `Joy` sintético** em `/joy_0`, como se fosse alguém segurando um
+controle. Não fala com o motor direto. Assim ela passa pelo `joy_aggregator`,
+`direction` e `cinematica` exatamente como o humano — sofre as mesmas saturações
+e os mesmos limites. Mexeu na cinemática, mexeu para os dois.
+
+### Como ela joga
+
+Um robô diferencial não anda de lado. Se for direto na bola, empurra para onde
+estiver apontando, que quase nunca é o gol. Então o alvo dela **desliza** conforme
+o alinhamento:
+
+- alinhada atrás da bola → mira 10 cm **além** dela, atravessa e empurra
+- desalinhada → o alvo recua para trás da bola, e ela contorna
+
+Isso é contínuo de propósito. Uma versão com máquina de estados
+(`ATACAR`/`POSICIONAR` com limiar) travava: parada a 2 cm do alvo, com 2,7 cm de
+erro lateral, ela oscilava entre os dois estados sem se mover — o alvo caía na
+zona morta do controlador. O benchmark abaixo pegou isso.
+
+### As dificuldades
+
+Cada uma é uma limitação real de robótica, que dá para explicar apontando para o campo:
+
+| | FÁCIL | MÉDIO | DIFÍCIL | o que é |
+|---|---|---|---|---|
+| `speed_frac` | 45% | 65% | 90% | fração da força que ela usa |
+| `reaction_delay` | 400 ms | 250 ms | 100 ms | ela te vê no passado |
+| `replan_period` | 600 ms | 400 ms | 150 ms | quantas vezes por segundo ela *pensa* |
+| `home_x_max` | −0.15 | +0.10 | +0.55 | até onde vai buscar a bola |
+| `aim_noise` | 6 cm | 3 cm | 1 cm | erro da visão dela |
+
+`home_x_max` é o alcance da **busca**, não uma coleira: uma vez com a bola, ela
+leva até o gol. Sem essa distinção ela empurrava até a borda da própria zona,
+desistia e voltava — e nunca concluía nada.
+
+Trocar ao vivo, sem reiniciar:
+
+```bash
+ros2 topic pub --once /ai/difficulty std_msgs/String '{data: DIFICIL}'
+ros2 param set /ai_player speed_frac 0.5     # ajuste fino
+ros2 topic pub --once /ai/enabled std_msgs/Bool '{data: false}'   # congela
+```
+
+Ou pelos botões na GUI.
+
+### Medindo, em vez de adivinhar
+
+```bash
+./tools/ai_bench.py --trials 120
+```
+
+Junta o cérebro da IA com a física direto em memória — sem ROS, sem simulador — e
+joga centenas de partidas em segundos. Responde "esse ajuste melhorou ou piorou?"
+com número, não com trinta segundos de tela.
+
+Contra gol livre, hoje:
+
+```
+FACIL     gol em  0.0% das tentativas
+MEDIO     gol em 15.0%   | mediana 19.1s
+DIFICIL   gol em 97.5%   | mediana  8.0s
+```
+
+FÁCIL em zero é o esperado — ela quase não ataca, é zagueira. Se esses números
+caírem depois de uma mexida, a mexida foi ruim.
+
+### O que aparece na GUI
+
+A cruz é o alvo que ela escolheu. O círculo tracejado é **onde ela acha que a
+bola está** — com atraso de reação ligado, ele fica visivelmente atrás da bola
+real (chega a 40 cm numa bola rápida). É a explicação visual de por que ela erra,
+sem precisar de palavra nenhuma. Vai para a TV na feira.
 
 ## Testando o rádio sem o ROS
 
