@@ -1,0 +1,17 @@
+# colcon
+build/
+install/
+log/
+
+# python
+__pycache__/
+*.pyc
+
+# editores
+.vscode/
+.DS_Store
+compile_commands.json
+.cache/
+
+# dados de execução (o highscore da feira não vai para o repo)
+data/highscores.json
