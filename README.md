@@ -19,9 +19,8 @@ e do [VSS_Arduino](https://github.com/carrossel-caipira/VSS_Arduino).
 | `firmware/` — TX bridge e firmware do robô | pronto, falta validar no hardware |
 | `simulator` — física do campo + GUI no navegador | pronto |
 | `ai_player` — o adversário | pronto |
+| `game_master` — regras, cronômetro, ranking e telas | pronto |
 | `vision_game` — detecção da bola e dos robôs | a fazer |
-| `game_master` — regras, cronômetro, placar | a fazer |
-| `scoreboard` — a tela da TV | a fazer |
 
 ## Arquitetura
 
@@ -104,6 +103,63 @@ ros2 launch startup teleop.py num_robots:=1 use_keyboard:=true
 # com logs detalhados
 ros2 launch startup teleop.py num_robots:=2 verbose:=true
 ```
+
+## O jogo completo
+
+```bash
+ros2 launch startup game.py
+```
+
+Três telas:
+
+| | onde | para quem |
+|---|---|---|
+| **TV** | http://localhost:8090/ | público — tela cheia no monitor |
+| **Operador** | http://localhost:8090/operador | quem toca o estande |
+| Simulador | http://localhost:8080/ | só enquanto não há robôs |
+
+### O formato
+
+Primeiro a **2 gols** vence, teto de **3 minutos**. O cronômetro corre do apito
+até o gol que decide, e é ele que vai para o ranking — ordenado do menor para o
+maior. Quem perde ou estoura o tempo não entra.
+
+Duas decisões que vêm da feira, não do futebol:
+
+- **Teto de tempo.** Fila parada é o pior inimigo de um estande. Sem teto, uma
+  dupla travada em 1×1 segura vinte pessoas.
+- **Só o vencedor entra no ranking.** Faz a lista significar uma coisa só —
+  "quem venceu mais rápido" — em vez de misturar critérios.
+
+Ajustáveis: `ros2 launch startup game.py target_score:=3 time_limit:=120.0`
+
+### O operador
+
+Digita o nome, aperta Enter. Teclas `1` (gol do jogador), `2` (gol do robô) e
+`espaço` (pausa) funcionam sem precisar mirar em botão com fila esperando.
+
+**Os botões de gol são o seguro do estande.** Estão lá desde o primeiro dia e
+nunca saem: valem quando a visão não enxergar o lance, e funcionam com a
+detecção automática ligada.
+
+### Quem apita
+
+O árbitro é o `game_master`, lendo `/game_data` — **não** o simulador. É o que
+faz a regra do gol ser literalmente o mesmo código no simulador e no campo real,
+já que os dois publicam a mesma mensagem. Rodando com o `game_master`, o
+simulador recebe `auto_referee:=False` e passa a só obedecer `/sim/reset`; sem
+ele, apita sozinho para dar para brincar.
+
+Um gol só conta de novo depois que a bola **sai** da área. Travar por tempo não
+basta: se ela ficar presa no fundo do gol — o que acontece de verdade quando
+ninguém recoloca — o lockout expira e o placar dispara em série.
+
+### Ranking
+
+Em `~/.vss-game/highscores.json`, top 10 por menor tempo. Sobrevive a reiniciar.
+Grava em arquivo temporário e move, então falta de energia no meio da escrita
+não corrompe a lista. Arquivo ilegível vira aviso no log e lista vazia — nunca
+derruba o jogo no meio da feira.
 
 ## Simulador — desenvolvendo sem hardware
 

@@ -23,7 +23,7 @@ import threading
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
-from std_msgs.msg import String
+from std_msgs.msg import Empty, String
 
 from shared_interfaces.msg import AiDebug, GameData, MotorVelocitiesList, RobotState
 
@@ -63,6 +63,11 @@ class SimNode(Node):
         # e o processamento custam tempo.
         self.declare_parameter('vision_delay', 0.0)
 
+        # Com o game_master no ar, o árbitro é ele: o simulador não conta gol
+        # nem recoloca por conta própria, senão os dois contam o mesmo lance e o
+        # placar dobra. Sozinho (para brincar ou depurar), o simulador se vira.
+        self.declare_parameter('auto_referee', True)
+
         field_spec = physics.FieldSpec(
             length=self.get_parameter('field_length').value,
             width=self.get_parameter('field_width').value,
@@ -96,6 +101,9 @@ class SimNode(Node):
         self._ai_debug = None
         self.create_subscription(AiDebug, '/ai/debug', self._on_ai_debug, 10)
 
+        self._auto_referee = bool(self.get_parameter('auto_referee').value)
+        self.create_subscription(Empty, '/sim/reset', self._on_reset_request, 10)
+
         self._player_id = int(self.get_parameter('player_id').value)
         joy_topic = f'/joy_{self._player_id}'
 
@@ -123,6 +131,10 @@ class SimNode(Node):
                 physics.set_wheel_command(
                     self.world, velocity.id, velocity.left, velocity.right)
 
+    def _on_reset_request(self, _msg):
+        with self._lock:
+            physics.reset_positions(self.world)
+
     def _on_ai_debug(self, msg):
         self._ai_debug = {
             'state': msg.state,
@@ -142,7 +154,9 @@ class SimNode(Node):
             if not self._paused:
                 physics.step(self.world, dt)
 
-                if self.world.goal_event:
+                # Só apita se estiver sozinho. Com o game_master no ar, ele é
+                # quem conta o gol e pede a recolocação por /sim/reset.
+                if self.world.goal_event and self._auto_referee:
                     self._score[self.world.goal_event] += 1
                     self.get_logger().info(
                         f'GOL {self.world.goal_event} | '

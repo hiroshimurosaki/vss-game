@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carrossel Caipira — Desafie o Robô</title>
+<style>
+  :root {
+    --menta:   #2EE6A8;
+    --ciano:   #3AC8E8;
+    --azul:    #4A7FE0;
+    --magenta: #A94BD6;
+    --laranja: #FF8C1A;
+
+    --bg:    #080b12;
+    --panel: rgba(255,255,255,.045);
+    --line:  rgba(255,255,255,.10);
+    --text:  #eef3f8;
+    --muted: #7d8899;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Brilho de fundo com as cores da logo. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: -30%;
+    background:
+      radial-gradient(closest-side, rgba(46,230,168,.13), transparent) 18% 22%/55% 55% no-repeat,
+      radial-gradient(closest-side, rgba(169,75,214,.13), transparent) 82% 78%/55% 55% no-repeat,
+      radial-gradient(closest-side, rgba(58,200,232,.10), transparent) 62% 18%/45% 45% no-repeat;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .screen {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    padding: 3vh 3.5vw;
+  }
+  .screen.on { display: flex; }
+
+  /* ── Cabeçalho ─────────────────────────────────────────── */
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 1.4vw;
+    padding-bottom: 1.6vh;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand {
+    font-size: clamp(18px, 2.1vw, 34px);
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    background: linear-gradient(100deg, var(--menta), var(--ciano) 38%, var(--azul) 68%, var(--magenta));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .tagline { color: var(--muted); font-size: clamp(12px, 1.05vw, 18px); }
+
+  .diff-badge {
+    margin-left: auto;
+    font-size: clamp(11px, .95vw, 16px);
+    font-weight: 650;
+    letter-spacing: .1em;
+    padding: .5vh 1.2vw;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--menta);
+  }
+
+  /* ── Atração ───────────────────────────────────────────── */
+
+  #idle .hero {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.15fr .85fr;
+    gap: 3vw;
+    align-items: center;
+  }
+
+  .call {
+    font-size: clamp(38px, 6.4vw, 118px);
+    font-weight: 800;
+    line-height: .96;
+    letter-spacing: -0.035em;
+  }
+  .call em {
+    font-style: normal;
+    background: linear-gradient(100deg, var(--menta), var(--ciano) 45%, var(--magenta));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .call-sub {
+    margin-top: 2.4vh;
+    font-size: clamp(15px, 1.5vw, 26px);
+    color: var(--muted);
+    line-height: 1.5;
+    max-width: 30ch;
+  }
+
+  .pulse {
+    margin-top: 3.2vh;
+    display: inline-flex;
+    align-items: center;
+    gap: .8vw;
+    font-size: clamp(14px, 1.35vw, 23px);
+    font-weight: 620;
+    color: var(--menta);
+  }
+  .pulse .dot {
+    width: .8em; height: .8em;
+    border-radius: 50%;
+    background: var(--menta);
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.25;transform:scale(.8)} }
+
+  /* ── Ranking ───────────────────────────────────────────── */
+
+  .ranking { background: var(--panel); border: 1px solid var(--line); border-radius: 1.2vw; padding: 2vh 1.6vw; }
+
+  .ranking h2 {
+    font-size: clamp(12px, 1.05vw, 18px);
+    font-weight: 700;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 1.6vh;
+  }
+
+  .rank-row {
+    display: grid;
+    grid-template-columns: 2.2em 1fr auto;
+    align-items: baseline;
+    gap: .9vw;
+    padding: .85vh 0;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+    font-size: clamp(14px, 1.35vw, 24px);
+    animation: slideIn .4s backwards;
+  }
+  .rank-row:last-child { border-bottom: none; }
+  @keyframes slideIn { from { opacity:0; transform: translateX(-14px) } }
+
+  .rank-pos { font-weight: 750; color: var(--muted); }
+  .rank-row:nth-child(1) .rank-pos { color: var(--menta); }
+  .rank-row:nth-child(2) .rank-pos { color: var(--ciano); }
+  .rank-row:nth-child(3) .rank-pos { color: var(--azul); }
+
+  .rank-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .rank-row.highlight {
+    background: linear-gradient(90deg, rgba(46,230,168,.16), transparent);
+    border-radius: .5vw;
+    padding-left: .7vw;
+    margin-left: -.7vw;
+  }
+
+  .empty-rank { color: var(--muted); font-size: clamp(13px,1.2vw,20px); padding: 2vh 0; }
+
+  /* ── Partida ───────────────────────────────────────────── */
+
+  #playing .body { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2vh; }
+
+  .scoreline {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 2.5vw;
+  }
+
+  .side { text-align: center; }
+  .side-name {
+    font-size: clamp(16px, 2vw, 38px);
+    font-weight: 700;
+    letter-spacing: -.01em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .side-tag { font-size: clamp(11px,.95vw,17px); color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: .8vh; }
+  .side.ai .side-name { color: var(--magenta); }
+  .side.player .side-name { color: var(--ciano); }
+
+  .pips { display: flex; justify-content: center; gap: .7vw; margin-top: 1.4vh; }
+  .pip {
+    width: clamp(16px, 1.7vw, 30px);
+    height: clamp(16px, 1.7vw, 30px);
+    border-radius: 50%;
+    border: 2px solid var(--line);
+    transition: background .25s, transform .25s, box-shadow .25s;
+  }
+  .side.ai .pip.on { background: var(--magenta); border-color: var(--magenta); box-shadow: 0 0 1.5vw rgba(169,75,214,.55); transform: scale(1.12); }
+  .side.player .pip.on { background: var(--ciano); border-color: var(--ciano); box-shadow: 0 0 1.5vw rgba(58,200,232,.55); transform: scale(1.12); }
+
+  .clock {
+    font-size: clamp(56px, 11vw, 200px);
+    font-weight: 800;
+    letter-spacing: -.045em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .clock.warn { color: var(--laranja); animation: tick 1s steps(2) infinite; }
+  @keyframes tick { 50% { opacity: .45 } }
+
+  .clock-label { text-align: center; font-size: clamp(11px,.95vw,17px); color: var(--muted); letter-spacing: .14em; text-transform: uppercase; }
+
+  .timebar {
+    height: .8vh;
+    background: rgba(255,255,255,.07);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 1vh;
+  }
+  .timebar span {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, var(--menta), var(--ciano));
+    transition: width .2s linear;
+  }
+  .timebar.warn span { background: linear-gradient(90deg, var(--laranja), #ff4d4d); }
+
+  /* ── Contagem ──────────────────────────────────────────── */
+
+  .count {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .count-num {
+    font-size: clamp(120px, 26vw, 440px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -.06em;
+    background: linear-gradient(160deg, var(--menta), var(--ciano) 50%, var(--magenta));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: pop .55s ease-out;
+  }
+  @keyframes pop { from { transform: scale(.55); opacity: 0 } }
+  .count-name { font-size: clamp(20px,2.6vw,48px); font-weight: 700; margin-top: 1vh; }
+
+  /* ── Gol ───────────────────────────────────────────────── */
+
+  .goal-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .goal-word {
+    font-size: clamp(70px, 17vw, 300px);
+    font-weight: 850;
+    letter-spacing: -.05em;
+    line-height: .9;
+    animation: slam .5s cubic-bezier(.2,1.5,.4,1);
+  }
+  @keyframes slam { from { transform: scale(2.1); opacity: 0; filter: blur(14px) } }
+  .goal-who { font-size: clamp(20px,2.8vw,52px); font-weight: 700; margin-top: 1.5vh; color: var(--muted); }
+
+  /* ── Resultado ─────────────────────────────────────────── */
+
+  .result { flex: 1; display: grid; grid-template-columns: 1fr .9fr; gap: 3vw; align-items: center; }
+  .result-title { font-size: clamp(40px,6.5vw,120px); font-weight: 820; line-height: .95; letter-spacing: -.035em; }
+  .result-time { font-size: clamp(46px,7.5vw,140px); font-weight: 800; letter-spacing: -.04em; margin-top: 1vh; }
+  .result-sub { font-size: clamp(15px,1.55vw,28px); color: var(--muted); margin-top: 1.5vh; }
+
+  .win  .result-title { background: linear-gradient(100deg, var(--menta), var(--ciano)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lose .result-title { color: var(--magenta); }
+
+  .medal {
+    display: inline-block;
+    margin-top: 2vh;
+    padding: .9vh 1.8vw;
+    border-radius: 999px;
+    font-size: clamp(15px,1.6vw,30px);
+    font-weight: 750;
+    background: linear-gradient(100deg, rgba(46,230,168,.20), rgba(58,200,232,.20));
+    border: 1px solid rgba(46,230,168,.45);
+    color: var(--menta);
+    animation: pop .5s ease-out .2s backwards;
+  }
+
+  .pause-veil {
+    position: fixed; inset: 0; z-index: 5;
+    background: rgba(8,11,18,.86);
+    display: none;
+    align-items: center; justify-content: center;
+    font-size: clamp(34px,5.5vw,100px); font-weight: 800; letter-spacing: -.03em;
+  }
+  .pause-veil.on { display: flex; }
+
+  #conn {
+    position: fixed; right: 1vw; bottom: 1vh; z-index: 6;
+    font-size: 12px; color: #f0883e;
+    display: none;
+  }
+  #conn.on { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ATRAÇÃO -->
+<div class="screen" id="idle">
+  <header>
+    <span class="brand">Carrossel Caipira</span>
+    <span class="tagline">futebol de robôs · UNESP</span>
+    <span class="diff-badge" id="idleDiff">MÉDIO</span>
+  </header>
+  <div class="hero">
+    <div>
+      <div class="call">Você contra<br><em>o robô</em>.</div>
+      <div class="call-sub">
+        Pegue o controle e tente vencer a inteligência artificial.
+        Melhor de três — e o cronômetro está correndo.
+      </div>
+      <div class="pulse"><span class="dot"></span> Chegue mais e jogue</div>
+    </div>
+    <div class="ranking">
+      <h2>Os dez mais rápidos</h2>
+      <div id="idleRank"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTAGEM -->
+<div class="screen" id="countdown">
+  <header>
+    <span class="brand">Carrossel Caipira</span>
+    <span class="diff-badge" id="cdDiff">MÉDIO</span>
+  </header>
+  <div class="count">
+    <div class="count-num" id="cdNum">3</div>
+    <div class="count-name" id="cdName"></div>
+  </div>
+</div>
+
+<!-- JOGANDO -->
+<div class="screen" id="playing">
+  <header>
+    <span class="brand">Carrossel Caipira</span>
+    <span class="tagline">melhor de três</span>
+    <span class="diff-badge" id="playDiff">MÉDIO</span>
+  </header>
+  <div class="body">
+    <div class="scoreline">
+      <div class="side ai">
+        <div class="side-tag">Inteligência artificial</div>
+        <div class="side-name">ROBÔ</div>
+        <div class="pips" id="aiPips"></div>
+      </div>
+      <div>
+        <div class="clock-label">tempo</div>
+        <div class="clock" id="clock">0:00.0</div>
+      </div>
+      <div class="side player">
+        <div class="side-tag">Jogador</div>
+        <div class="side-name" id="playerName">—</div>
+        <div class="pips" id="playerPips"></div>
+      </div>
+    </div>
+    <div class="timebar" id="timebar"><span id="timefill"></span></div>
+  </div>
+</div>
+
+<!-- GOL -->
+<div class="screen" id="goal">
+  <div class="goal-wrap">
+    <div class="goal-word" id="goalWord">GOL!</div>
+    <div class="goal-who" id="goalWho"></div>
+  </div>
+</div>
+
+<!-- RESULTADO -->
+<div class="screen" id="result">
+  <header>
+    <span class="brand">Carrossel Caipira</span>
+    <span class="diff-badge" id="resDiff">MÉDIO</span>
+  </header>
+  <div class="result" id="resultBox">
+    <div>
+      <div class="result-title" id="resTitle">Você venceu!</div>
+      <div class="result-time" id="resTime">0:00.0</div>
+      <div class="result-sub" id="resSub"></div>
+      <div id="resMedal"></div>
+    </div>
+    <div class="ranking">
+      <h2>Os dez mais rápidos</h2>
+      <div id="resRank"></div>
+    </div>
+  </div>
+</div>
+
+<div class="pause-veil" id="pauseVeil">PAUSADO</div>
+<div id="conn">sem conexão com o árbitro</div>
+
+<script>
+'use strict';
+
+let ws = null;
+let state = null;
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => document.getElementById('conn').classList.remove('on');
+  ws.onclose = () => {
+    document.getElementById('conn').classList.add('on');
+    setTimeout(connect, 1000);
+  };
+  ws.onmessage = (event) => {
+    state = JSON.parse(event.data);
+    render();
+  };
+}
+
+function fmt(seconds) {
+  if (seconds == null || isNaN(seconds)) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = seconds - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
+}
+
+const DIFF_LABEL = { FACIL: 'FÁCIL', MEDIO: 'MÉDIO', DIFICIL: 'DIFÍCIL' };
+
+function show(id) {
+  for (const el of document.querySelectorAll('.screen')) {
+    el.classList.toggle('on', el.id === id);
+  }
+}
+
+function pips(container, count, total) {
+  // Só redesenha quando muda: recriar os nós a 30 Hz mataria a animação.
+  const want = `${count}/${total}`;
+  if (container.dataset.sig === want) return;
+  container.dataset.sig = want;
+
+  container.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'pip' + (i < count ? ' on' : '');
+    container.appendChild(dot);
+  }
+}
+
+function ranking(container, scores, highlightName, highlightTime) {
+  if (!scores || !scores.length) {
+    container.innerHTML = '<div class="empty-rank">Ninguém venceu ainda. Seja o primeiro.</div>';
+    return;
+  }
+
+  container.innerHTML = scores.map((entry, index) => {
+    const mine = highlightName
+      && entry.name === highlightName
+      && Math.abs(entry.time - highlightTime) < 0.05;
+
+    return `<div class="rank-row${mine ? ' highlight' : ''}" style="animation-delay:${index * 45}ms">
+      <span class="rank-pos">${index + 1}</span>
+      <span class="rank-name">${escapeHtml(entry.name)}</span>
+      <span class="rank-time">${fmt(entry.time)}</span>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function render() {
+  if (!state) return;
+
+  const diff = DIFF_LABEL[state.difficulty] || state.difficulty || '';
+  for (const id of ['idleDiff', 'cdDiff', 'playDiff', 'resDiff']) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = diff;
+  }
+
+  document.getElementById('pauseVeil').classList.toggle('on', state.state === 'PAUSA');
+
+  switch (state.state) {
+    case 'IDLE':
+    case 'REGISTRO':
+      show('idle');
+      ranking(document.getElementById('idleRank'), state.scores);
+      break;
+
+    case 'CONTAGEM': {
+      show('countdown');
+      const n = Math.max(1, Math.ceil(state.state_remaining));
+      const el = document.getElementById('cdNum');
+      if (el.textContent !== String(n)) {
+        el.textContent = n;
+        // Reinicia a animação de pop a cada número.
+        el.style.animation = 'none';
+        void el.offsetWidth;
+        el.style.animation = '';
+      }
+      document.getElementById('cdName').textContent = state.player_name;
+      break;
+    }
+
+    case 'JOGANDO':
+    case 'PAUSA':
+      show('playing');
+      renderPlaying();
+      break;
+
+    case 'GOL': {
+      show('goal');
+      const player = state.last_scorer === 'JOGADOR';
+      const word = document.getElementById('goalWord');
+      word.textContent = player ? 'GOL!' : 'O ROBÔ MARCOU';
+      word.style.color = player ? 'var(--ciano)' : 'var(--magenta)';
+      document.getElementById('goalWho').textContent =
+        player ? state.player_name : `${state.player_score} × ${state.ai_score}`;
+      break;
+    }
+
+    case 'FIM':
+      show('result');
+      renderResult();
+      break;
+  }
+}
+
+function renderPlaying() {
+  document.getElementById('playerName').textContent = state.player_name || '—';
+  document.getElementById('clock').textContent = fmt(state.elapsed);
+
+  pips(document.getElementById('aiPips'), state.ai_score, state.target_score);
+  pips(document.getElementById('playerPips'), state.player_score, state.target_score);
+
+  const left = Math.max(0, state.time_limit - state.elapsed);
+  const frac = state.time_limit ? left / state.time_limit : 0;
+  const warn = left < 30;
+
+  document.getElementById('timefill').style.width = `${frac * 100}%`;
+  document.getElementById('timebar').classList.toggle('warn', warn);
+  document.getElementById('clock').classList.toggle('warn', warn);
+}
+
+function renderResult() {
+  const box = document.getElementById('resultBox');
+  box.classList.toggle('win', state.player_won);
+  box.classList.toggle('lose', !state.player_won);
+
+  document.getElementById('resTitle').textContent =
+    state.player_won ? 'Você venceu!' : 'O robô levou essa';
+
+  document.getElementById('resTime').textContent = fmt(state.elapsed);
+
+  document.getElementById('resSub').textContent = state.player_won
+    ? `${state.player_name} · ${state.player_score} × ${state.ai_score}`
+    : `${state.player_name} · ${state.player_score} × ${state.ai_score} — tente de novo!`;
+
+  const medal = document.getElementById('resMedal');
+  medal.innerHTML = state.rank_position
+    ? `<span class="medal">${state.rank_position}º lugar no ranking</span>`
+    : '';
+
+  ranking(document.getElementById('resRank'), state.scores,
+          state.player_name, state.elapsed);
+}
+
+connect();
+</script>
+</body>
+</html>

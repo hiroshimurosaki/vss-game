@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operador — Carrossel Caipira</title>
+<style>
+  :root {
+    --menta: #2EE6A8; --ciano: #3AC8E8; --magenta: #A94BD6; --laranja: #FF8C1A;
+    --bg: #0d1117; --panel: #161b22; --line: #262d38; --text: #e6edf3; --muted: #8b949e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    padding: 18px; max-width: 620px; margin: 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+  h1 { font-size: 17px; font-weight: 650; margin-bottom: 3px; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 15px; margin-bottom: 13px; }
+  .card h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin-bottom: 11px; }
+
+  .statusline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .badge { padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 650; letter-spacing: .05em; border: 1px solid var(--line); }
+  .badge.live { color: var(--menta); border-color: rgba(46,230,168,.4); }
+  .badge.wait { color: var(--muted); }
+  .badge.warn { color: var(--laranja); border-color: #5a3a1e; }
+
+  .score-now { font-size: 27px; font-weight: 750; letter-spacing: -.02em; }
+  .clock-now { font-size: 27px; font-weight: 750; margin-left: auto; }
+
+  input[type=text] {
+    width: 100%; background: #0d1117; color: var(--text);
+    border: 1px solid var(--line); border-radius: 7px;
+    padding: 12px 13px; font: inherit; font-size: 17px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  input[type=text]:focus { outline: none; border-color: var(--ciano); }
+
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  button {
+    flex: 1 1 auto; min-width: 92px;
+    background: #21262d; color: var(--text);
+    border: 1px solid var(--line); border-radius: 7px;
+    padding: 11px 13px; font: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background .12s, border-color .12s;
+  }
+  button:hover { background: #2d333b; }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .38; cursor: not-allowed; }
+
+  button.primary { background: linear-gradient(100deg, #1d8f6b, #1c7fa0); border-color: transparent; }
+  button.primary:hover { background: linear-gradient(100deg, #22a87d, #2193ba); }
+  button.player { border-color: rgba(58,200,232,.45); color: var(--ciano); }
+  button.ai { border-color: rgba(169,75,214,.45); color: var(--magenta); }
+  button.danger { border-color: #5a2020; color: #f08a8a; }
+
+  kbd { display:inline-block; min-width:19px; padding:1px 5px; background:#21262d;
+        border:1px solid var(--line); border-bottom-width:2px; border-radius:4px;
+        font:11px ui-monospace,Menlo,monospace; text-align:center; }
+
+  .hint { color: var(--muted); font-size: 12px; margin-top: 9px; line-height: 1.45; }
+
+  ol { list-style: none; counter-reset: r; }
+  ol li {
+    counter-increment: r; display: flex; gap: 10px; align-items: baseline;
+    padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 13.5px;
+  }
+  ol li::before { content: counter(r); color: var(--muted); font-weight: 650; min-width: 1.5em; }
+  ol li .t { margin-left: auto; font-weight: 650; }
+
+  #conn { font-size: 12px; color: #f0883e; margin-top: 10px; display: none; }
+  #conn.on { display: block; }
+</style>
+</head>
+<body>
+
+<h1>Painel do operador</h1>
+<div class="sub">A TV está em <strong>/</strong> — abra numa segunda janela, tela cheia.</div>
+
+<div class="card">
+  <div class="statusline">
+    <span class="badge wait" id="stateBadge">—</span>
+    <span class="score-now"><span id="sAi">0</span> × <span id="sPlayer">0</span></span>
+    <span class="clock-now" id="sClock">0:00.0</span>
+  </div>
+  <div class="hint" id="whoLine">Nenhum jogador.</div>
+</div>
+
+<div class="card">
+  <h2>Novo jogador</h2>
+  <input type="text" id="name" placeholder="Nome do visitante" maxlength="14" autocomplete="off">
+  <div class="btns">
+    <button class="primary" id="btnStart">Começar (Enter)</button>
+    <button id="btnAbort">Cancelar</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Durante a partida</h2>
+  <div class="btns">
+    <button class="player" id="btnGoalPlayer">Gol do jogador <kbd>1</kbd></button>
+    <button class="ai" id="btnGoalAi">Gol do robô <kbd>2</kbd></button>
+  </div>
+  <div class="btns">
+    <button id="btnPause">Pausar <kbd>espaço</kbd></button>
+  </div>
+  <p class="hint">
+    Os botões de gol são o <strong>seguro</strong>: valem quando a visão não
+    enxergar o lance. Funcionam mesmo com a detecção automática ligada.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Dificuldade do robô</h2>
+  <div class="btns">
+    <button data-diff="FACIL">Fácil</button>
+    <button data-diff="MEDIO">Médio</button>
+    <button data-diff="DIFICIL">Difícil</button>
+  </div>
+  <p class="hint" id="diffNow">—</p>
+</div>
+
+<div class="card">
+  <h2>Ranking</h2>
+  <ol id="rank"></ol>
+  <div class="btns">
+    <button class="danger" id="btnClear">Apagar ranking</button>
+  </div>
+  <p class="hint">Salvo em disco. Sobrevive a reiniciar o programa.</p>
+</div>
+
+<div id="conn">sem conexão com o árbitro</div>
+
+<script>
+'use strict';
+
+let ws = null, state = null;
+const nameInput = document.getElementById('name');
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => document.getElementById('conn').classList.remove('on');
+  ws.onclose = () => {
+    document.getElementById('conn').classList.add('on');
+    setTimeout(connect, 1000);
+  };
+  ws.onmessage = (e) => { state = JSON.parse(e.data); render(); };
+}
+
+function send(payload) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+}
+
+function fmt(s) {
+  if (s == null || isNaN(s)) return '--:--';
+  const m = Math.floor(s / 60);
+  return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`;
+}
+
+const LABEL = {
+  IDLE: 'aguardando', REGISTRO: 'registrando', CONTAGEM: 'contagem',
+  JOGANDO: 'jogando', GOL: 'gol', FIM: 'resultado', PAUSA: 'pausado',
+};
+
+function render() {
+  if (!state) return;
+
+  const badge = document.getElementById('stateBadge');
+  badge.textContent = LABEL[state.state] || state.state;
+  badge.className = 'badge ' +
+    (state.state === 'JOGANDO' ? 'live' : state.state === 'PAUSA' ? 'warn' : 'wait');
+
+  document.getElementById('sAi').textContent = state.ai_score;
+  document.getElementById('sPlayer').textContent = state.player_score;
+  document.getElementById('sClock').textContent = fmt(state.elapsed);
+
+  document.getElementById('whoLine').textContent = state.player_name
+    ? `Jogador: ${state.player_name}` + (state.state === 'FIM'
+        ? (state.player_won
+            ? ` — venceu em ${fmt(state.elapsed)}` +
+              (state.rank_position ? ` (${state.rank_position}º lugar)` : '')
+            : ' — não venceu')
+        : '')
+    : 'Nenhum jogador.';
+
+  document.getElementById('diffNow').textContent = `Agora: ${state.difficulty || '—'}`;
+
+  const running = ['JOGANDO', 'GOL', 'PAUSA'].includes(state.state);
+  document.getElementById('btnGoalPlayer').disabled = !running;
+  document.getElementById('btnGoalAi').disabled = !running;
+  document.getElementById('btnPause').disabled = !['JOGANDO', 'GOL', 'CONTAGEM', 'PAUSA'].includes(state.state);
+  document.getElementById('btnPause').textContent =
+    state.state === 'PAUSA' ? 'Continuar' : 'Pausar';
+
+  const rank = document.getElementById('rank');
+  rank.innerHTML = (state.scores || []).map((e) =>
+    `<li><span>${escapeHtml(e.name)}</span><span class="t">${fmt(e.time)}</span></li>`
+  ).join('') || '<li style="color:var(--muted)">vazio</li>';
+}
+
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+function startMatch() {
+  const name = nameInput.value.trim();
+  send({ type: 'start', name });
+  nameInput.value = '';
+  nameInput.blur();
+}
+
+document.getElementById('btnStart').onclick = startMatch;
+document.getElementById('btnAbort').onclick = () => send({ type: 'abort' });
+document.getElementById('btnPause').onclick = () => send({ type: 'pause' });
+document.getElementById('btnGoalPlayer').onclick = () => send({ type: 'goal', who: 'player' });
+document.getElementById('btnGoalAi').onclick = () => send({ type: 'goal', who: 'ai' });
+
+document.getElementById('btnClear').onclick = () => {
+  if (confirm('Apagar todos os tempos do ranking?')) send({ type: 'clear_scores' });
+};
+
+for (const b of document.querySelectorAll('[data-diff]')) {
+  b.onclick = () => send({ type: 'difficulty', value: b.dataset.diff });
+}
+
+nameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); startMatch(); }
+});
+
+// Atalhos para o operador não precisar mirar no botão com fila esperando.
+// Ignorados enquanto o cursor está no campo de nome.
+window.addEventListener('keydown', (e) => {
+  if (document.activeElement === nameInput) return;
+
+  if (e.key === '1') { e.preventDefault(); send({ type: 'goal', who: 'player' }); }
+  if (e.key === '2') { e.preventDefault(); send({ type: 'goal', who: 'ai' }); }
+  if (e.key === ' ') { e.preventDefault(); send({ type: 'pause' }); }
+});
+
+connect();
+</script>
+</body>
+</html>
