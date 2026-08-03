@@ -313,6 +313,12 @@ class GameMaster(Node):
         app.router.add_get('/operador', self._serve('operator.html'))
         app.router.add_get('/ws', self._websocket_handler)
 
+        # Versões da tela da TV em avaliação. Existem só para escolher o layout
+        # com o jogo rodando de verdade; a escolhida vira o tv.html e estas
+        # rotas saem daqui.
+        for index in (1, 2, 3, 4):
+            app.router.add_get(f'/tv{index}', self._serve(f'tv_v{index}.html'))
+
         runner = web.AppRunner(app)
         self._loop.run_until_complete(runner.setup())
 
