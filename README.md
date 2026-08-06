@@ -16,40 +16,77 @@ e do [VSS_Arduino](https://github.com/carrossel-caipira/VSS_Arduino).
 | `cinematica` — cinemática diferencial | pronto |
 | `robot_communication` — ponte ROS ↔ serial | pronto |
 | `startup` — launch files | pronto |
-| `firmware/` — TX bridge e firmware do robô | pronto, falta validar no hardware |
+| `firmware/` — TX bridge e firmware do robô | pronto; salto de rádio validado em 06/08 |
 | `simulator` — física do campo + GUI no navegador | pronto |
 | `ai_player` — o adversário | pronto |
 | `game_master` — regras, cronômetro, ranking e telas | pronto |
-| `vision_game` — detecção da bola e dos robôs | a fazer |
+| `vision_game` — detecção da bola e dos robôs | detecta 100% a 30 Hz, calibrado |
+
+## O que falta para o jogo estar 100%
+
+**O salto de rádio foi validado em 06/08** — a ponte envia e o robô recebe.
+Com isso a cadeia inteira, do olho à roda, está fechada pelo menos uma vez.
+O que falta agora é montagem e aferição, não arquitetura.
+
+1. **O robô só obedece a si mesmo com o `robot_rx.ino`.** O `franky.ino` não
+   filtra por `robot_id` — ele aceita todo pacote que passe no checksum. Com um
+   robô é indiferente e até cômodo; com dois, os dois andam juntos e o jogo não
+   existe. Antes de montar o segundo robô, grave o `firmware/robot_rx` com
+   `MY_ROBOT_ID` diferente em cada um e escreva o número no chassi.
+
+2. **`wheel_speed_max` é um chute declarado** (0,75 m/s). É ele que converte m/s
+   para a faixa −1…1 do firmware. Meça cronometrando um metro a `--left 1.0
+   --right 1.0` no `tools/radio_console.py`. Errado, o robô fica lento demais ou
+   satura e perde a proporção entre as rodas nas curvas.
+
+3. **A exatidão da visão nunca foi medida contra régua**, e o **ângulo** em
+   especial nunca foi conferido contra referência física — só contra leitura de
+   imagem. É o erro mais caro que pode estar escondido: ângulo trocado faz o
+   robô andar de ré, e nenhum teste feito até agora pegaria isso. A proporção
+   dos cantos calibrados fecha em 0,10%, o que é bom sinal, mas não prova
+   posição absoluta.
+
+4. **O controle do visitante nunca foi testado com gamepad plugado.** O
+   `use_joy:=true` sobe o nó e foi verificado, mas sem hardware na porta.
+
+Comandos do dia a dia: **`CHEATSHEET.md`**. Mapa dos nós e invariantes: **`CLAUDE.md`**.
 
 ## Arquitetura
 
 A IA não tem um caminho próprio até o robô: ela **publica um `sensor_msgs/Joy` sintético**
-em `/joy_1` e desce pelo mesmo pipeline do jogador humano. Isso mantém um só caminho de
+em `/joy_0` e desce pelo mesmo pipeline do jogador humano. Isso mantém um só caminho de
 código entre a decisão e o motor — o que a IA faz é indistinguível, para o resto do
 sistema, de alguém segurando um controle.
 
 ```
-  câmera                    controle do jogador
-     │                              │
- vision_game                 game_controller_node
-     │ /game_data                   │ /joy_0
-     ├──────────► ai_player ────────┤ /joy_1  (Joy sintético)
-     │                              │
-     │                       joy_aggregator
-     │                              │ /joy_list
-     │                  ┌───────────┴───────────┐
-     │            direction              special_controls
-     │            /direction                 /actions
-     │                  └───────────┬───────────┐
-     │                          cinematica
-     │                              │ /motorVelocities
-     │                       radio_communication
-     │                              │ serial 115200
-     │                          tx_bridge ──nRF24──► robot_rx (×N)
-     │
- game_master ──WebSocket──► scoreboard (Chrome fullscreen na TV)
+  câmera                                controle do jogador
+     │                                          │
+ vision_game                            game_controller_node
+     │ /game_data                               │
+     ├──────────► ai_player ──/joy_0──┐         │
+     │             (robô 0)  sintético│         │ /joy_1  (robô 1)
+     │                ▲               │         │
+     │                │               └────┬────┘
+     │          /ai/enabled            joy_aggregator
+     │                │                    │ /joy_list
+     │                │        ┌───────────┴───────────┐
+     │                │  direction              special_controls
+     │                │  /direction                 /actions
+     │                │        └───────────┬───────────┘
+     │                │                cinematica
+     │                │                    │ /motorVelocities
+     │                │            radio_communication
+     │                │                    │ serial 115200
+     │                │                tx_bridge ──nRF24──► robot_rx (×N)
+     │                │
+     └──► game_master ┘──WebSocket──► TV e operador (:8090)
 ```
+
+`/ai/enabled` é a coleira: o `game_master` só libera a IA no estado `JOGANDO`.
+Fora da partida ela manda zero, e `/motorVelocities` fica zerado — é o
+comportamento correto, e a primeira coisa a conferir quando "a IA não faz nada".
+
+O mapa completo de tópicos, tipos e invariantes está em `CLAUDE.md`.
 
 ## Protocolo do rádio
 
@@ -289,6 +326,89 @@ A cruz é o alvo que ela escolheu. O círculo tracejado é **onde ela acha que a
 bola está** — com atraso de reação ligado, ele fica visivelmente atrás da bola
 real (chega a 40 cm numa bola rápida). É a explicação visual de por que ela erra,
 sem precisar de palavra nenhuma. Vai para a TV na feira.
+
+## A visão
+
+```bash
+ros2 launch startup vision.py          # só a visão, para calibrar
+ros2 launch startup game.py use_vision:=true   # o jogo, com a câmera
+```
+
+Publica exatamente o mesmo `/game_data` que o simulador publicava — é por isso
+que `use_vision:=true` troca uma peça só e IA, `game_master` e TV não percebem.
+
+### Calibrando
+
+Abra **http://localhost:8070**. Nada aqui depende de saber os números de
+antemão — dá para calibrar clicando.
+
+**Se a câmera só mudou de lugar** (campo e luz iguais), aperte
+**Reencontrar cantos**. Ele alinha o quadro de agora com a foto guardada na
+última calibração e transporta os cantos. É o caminho normal do dia a dia, e
+funciona porque a câmera e a lâmpada são fixas — só a posição muda.
+
+**Se for a primeira vez**, ou se o alinhamento falhar:
+
+1. **Clicar cantos** → clique os 4 cantos do retângulo de jogo, do gol da
+   esquerda/lado de cima, no sentido horário. O campo tem os cantos chanfrados
+   a 45°: mire na **interseção virtual** das duas retas, não na ponta do
+   chanfro.
+2. **Confira pelas linhas azuis.** Elas são o campo teórico projetado pela
+   homografia. Calibração certa = elas caem em cima das linhas pintadas,
+   principalmente a do meio. Isso vale mais que qualquer número: erro em
+   metros é difícil de julgar, linha do meio fora do lugar não é.
+3. **Clicar na cor** → escolha o alvo e clique no objeto no vídeo. A faixa HSV
+   sai da amostra. Os sliders ficam para ajuste fino.
+4. **Salvar.** Grava `~/.vss-game/vision.json` **e** a foto de referência em
+   `~/.vss-game/vision_ref.png` — é ela que faz o "Reencontrar cantos"
+   funcionar da próxima vez.
+
+O recorte da imagem sai sozinho dos cantos: calibrou, o resto vem junto.
+
+Por que não há detecção automática de canto do zero: as bordas laterais do
+campo são **interrompidas pela boca do gol**, então viram segmentos curtos,
+enquanto a linha da grande área é longa e contínua. Todo ajuste de reta prefere
+a área e erra o campo em ~10 cm. Duas tentativas, dois fracassos pelo mesmo
+motivo — daí o alinhamento contra referência, que não depende de achar linha
+nenhuma.
+
+### As cores
+
+Quatro cores, todas a mais de 30° de matiz umas das outras:
+
+| papel | cor | H |
+|---|---|---|
+| bola | laranja | ~4 |
+| retângulo do robô 0 | amarelo | ~22 |
+| retângulo do robô 1 | verde | ~65 |
+| quadrado de orientação (nos dois) | azul-bebê | ~98 |
+
+Com **um robô por time**, a cor do retângulo já é a identidade e o vetor
+retângulo→quadrado dá o ângulo. Não é preciso distinguir os quadrados de ID
+entre si — que é justamente a parte frágil.
+
+**Sob a lâmpada do estande, o feltro fica azulado** — H 105–114, com saturação
+chegando a 109 no percentil 90. Isso encosta no azul-bebê (H 102–105, S 99–112)
+em matiz *e* em saturação, e o que sobra separando é só o brilho. Por isso o
+`v_min` do `front` é 105, bem mais alto que os outros. **Se trocarem a lâmpada,
+é o primeiro limiar a rever**, e a saída melhor é trocar o azul-bebê por uma cor
+longe do azul.
+
+### Coisas que custaram depuração
+
+- **`import cv2` quebra** se houver numpy 2.x em `~/.local` (o cv2 do apt é
+  compilado contra numpy 1.x). Os launch files passam `PYTHONNOUSERSITE=1`;
+  rodando o nó na mão, passe também.
+- **O backend de captura é o `ffmpeg`, não o OpenCV**, e a diferença é grande:
+  16,7 fps contra 30,1 fps a 1080p. O gargalo é o decode do MJPEG, que o
+  OpenCV faz num thread só. `backend:=opencv` volta atrás se faltar ffmpeg.
+- **Trave exposição, ganho, foco e balanço de branco** — o nó faz isso sozinho.
+  Com os automáticos ligados, qualquer objeto claro entrando em campo reexpõe a
+  câmera e derruba todos os limiares de uma vez.
+- **O `exposure_time_absolute` satura no teto do frame rate** (~312 a 30 fps) e
+  é quantizado pelo driver: peça 200 e leia 156 de volta. Quem controla o
+  brilho é o **gain**. E o gain já foi visto voltando sozinho para 8 depois que
+  o stream abre — por isso o nó relê e reaplica.
 
 ## Testando o rádio sem o ROS
 

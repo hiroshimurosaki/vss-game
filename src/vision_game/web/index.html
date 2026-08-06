@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Calibração da visão — VSS</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#12141a; color:#e6e8ee;
+         font:14px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
+  header { padding:10px 16px; background:#1b1e26; border-bottom:1px solid #2b3040;
+           display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  h1 { font-size:15px; margin:0; font-weight:600; }
+  main { display:flex; gap:16px; padding:16px; align-items:flex-start; flex-wrap:wrap; }
+  #view { max-width:100%; border:1px solid #2b3040; border-radius:6px; display:block; }
+  aside { flex:1; min-width:330px; max-width:470px; }
+  .card { background:#1b1e26; border:1px solid #2b3040; border-radius:6px;
+          padding:12px 14px; margin-bottom:12px; }
+  .card h2 { font-size:12px; margin:0 0 8px; text-transform:uppercase;
+             letter-spacing:.07em; color:#8f97ad; font-weight:600; }
+  .card.armed { border-color:#2f6df6; box-shadow:0 0 0 1px #2f6df6 inset; }
+  .row { display:flex; align-items:center; gap:8px; margin:6px 0; }
+  .row label { width:58px; font-size:12px; color:#8f97ad; }
+  .row input[type=range] { flex:1; }
+  .row output { width:44px; text-align:right; font-variant-numeric:tabular-nums;
+                font-size:12px; }
+  button { background:#2f6df6; color:#fff; border:0; border-radius:5px;
+           padding:7px 13px; font-size:13px; cursor:pointer; font-weight:500; }
+  button.ghost { background:#2b3040; }
+  button.on { background:#e0913a; }
+  button:hover { filter:brightness(1.15); }
+  select { background:#12141a; color:#e6e8ee; border:1px solid #2b3040;
+           border-radius:5px; padding:6px; }
+  .hint { color:#8f97ad; font-size:12px; margin:6px 0 0; }
+  code { background:#0e1015; padding:1px 5px; border-radius:3px; font-size:12px; }
+  #status { font-size:12px; color:#8f97ad; }
+  ol { margin:6px 0 0 18px; padding:0; font-size:12px; color:#8f97ad; }
+  ol li { margin:3px 0; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td { padding:2px 0; }
+  td.k { color:#8f97ad; }
+  td.v { text-align:right; font-variant-numeric:tabular-nums; }
+  .ok { color:#4ec98a; } .bad { color:#e0614f; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Calibração da visão</h1>
+  <span id="status">conectando…</span>
+  <span style="flex:1"></span>
+  <button id="save">Salvar calibração</button>
+</header>
+
+<main>
+  <div><img id="view" src="/stream.mjpg" alt="câmera"></div>
+
+  <aside>
+    <div class="card">
+      <h2>1 · Posição da câmera</h2>
+      <p class="hint">Se a câmera mudou de lugar mas o campo e a luz são os
+      mesmos, não precisa clicar nada: isto alinha o quadro de agora com a foto
+      da última calibração e transporta os cantos.</p>
+      <div class="row"><button id="reloc">Reencontrar cantos</button></div>
+      <p class="hint">Só funciona depois que existir uma calibração salva.</p>
+    </div>
+
+    <div class="card" id="cornercard">
+      <h2>2 · Cantos, na mão</h2>
+      <p class="hint">Clique os 4 cantos do <b>retângulo de jogo</b>, no sentido
+      horário:</p>
+      <ol>
+        <li>gol esquerdo, lado de cima</li>
+        <li>gol direito, lado de cima</li>
+        <li>gol direito, lado de baixo</li>
+        <li>gol esquerdo, lado de baixo</li>
+      </ol>
+      <p class="hint">O campo tem os cantos chanfrados a 45°: mire na
+      <b>interseção virtual</b> das duas retas, não na ponta do chanfro.</p>
+      <div class="row">
+        <button id="armCorners" class="ghost">Clicar cantos</button>
+        <span id="ncorners" class="hint">—</span>
+      </div>
+      <p class="hint"><b>Conferência:</b> as linhas azuis são o campo teórico
+      projetado. Se a calibração estiver certa, elas caem <b>em cima</b> das
+      linhas pintadas — principalmente a do meio.</p>
+    </div>
+
+    <div class="card" id="colorcard">
+      <h2>3 · Cores</h2>
+      <div class="row">
+        <label>alvo</label>
+        <select id="color"></select>
+        <button id="armPick" class="ghost">Clicar na cor</button>
+      </div>
+      <p class="hint">Escolha o alvo, aperte <b>Clicar na cor</b> e clique no
+      objeto no vídeo. A faixa HSV sai da amostra — não precisa adivinhar
+      slider. Os sliders abaixo ficam para ajuste fino.</p>
+      <div id="sliders"></div>
+    </div>
+
+    <div class="card">
+      <h2>4 · Câmera</h2>
+      <p class="hint">Exposição e ganho travados. Suba primeiro a exposição
+      (é luz de graça, limitada pelos 30 fps); só depois o ganho, que traz
+      ruído junto.</p>
+      <div id="cam"></div>
+    </div>
+
+    <div class="card">
+      <h2>Diagnóstico</h2>
+      <table id="stats"><tr><td class="k">—</td></tr></table>
+    </div>
+  </aside>
+</main>
+
+<script>
+const view = document.getElementById('view');
+const statusEl = document.getElementById('status');
+let ws, cfg = null, corners = [], current = null, mode = null;
+
+const FIELDS = [['h_lo',0,179],['h_hi',0,179],['s_min',0,255],['s_max',0,255],
+                ['v_min',0,255],['v_max',0,255],['min_area',0,4000],['max_area',0,40000]];
+const CAM = [['exposure_time_absolute',3,2047],['gain',0,255],
+             ['white_balance_temperature',2000,6500]];
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen  = () => say('conectado');
+  ws.onclose = () => { say('desconectado — retentando'); setTimeout(connect, 1000); };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'config') { cfg = m.config; initAll(); }
+    else if (m.type === 'saved') say('salvo ✓ (calibração + foto de referência)');
+    else if (m.type === 'note')  say(m.msg);
+    else if (m.type === 'error') say('erro: ' + m.msg);
+    else if (m.type === 'stats') showStats(m.stats);
+  };
+}
+function say(t) { statusEl.textContent = t; }
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+function showStats(s) {
+  const pct = (a) => s.frames ? (100*a/s.frames).toFixed(1) + '%' : '—';
+  const cls = (a) => (s.frames && a/s.frames > 0.98) ? 'ok' : 'bad';
+  document.getElementById('stats').innerHTML =
+    `<tr><td class="k">taxa</td><td class="v">${s.fps.toFixed(1)} fps</td></tr>
+     <tr><td class="k">bola vista</td>
+         <td class="v ${cls(s.frames-s.ball_miss)}">${pct(s.frames-s.ball_miss)}</td></tr>
+     <tr><td class="k">robô não visto</td><td class="v">${s.robot_miss}×</td></tr>
+     <tr><td class="k">frames</td><td class="v">${s.frames}</td></tr>`;
+}
+
+function initAll() {
+  const sel = document.getElementById('color');
+  if (sel.options.length !== Object.keys(cfg.colors).length) {
+    sel.innerHTML = '';
+    for (const n of Object.keys(cfg.colors)) {
+      const o = document.createElement('option'); o.value = o.textContent = n;
+      sel.appendChild(o);
+    }
+    sel.onchange = () => { current = sel.value; buildSliders(); };
+    current = sel.value = Object.keys(cfg.colors)[0];
+  }
+  buildSliders(); buildCam();
+  corners = cfg.corners_px.map(p => [p[0], p[1]]);
+  document.getElementById('ncorners').textContent = `${corners.length}/4 marcados`;
+}
+
+function slider(box, key, lo, hi, val, oninput) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<label>${key.replace('_absolute','').replace('white_balance_','wb_')}</label>
+    <input type="range" min="${lo}" max="${hi}" value="${val}"><output>${val}</output>`;
+  const i = row.querySelector('input'), o = row.querySelector('output');
+  i.oninput = () => { o.textContent = i.value; oninput(parseInt(i.value,10)); };
+  box.appendChild(row);
+}
+
+function buildSliders() {
+  const box = document.getElementById('sliders'); box.innerHTML = '';
+  const spec = cfg.colors[current];
+  for (const [k,lo,hi] of FIELDS)
+    slider(box, k, lo, hi, spec[k], v => { spec[k]=v; send({type:'color',name:current,spec}); });
+}
+
+function buildCam() {
+  const box = document.getElementById('cam'); box.innerHTML = '';
+  const v = cfg.v4l2 || {};
+  for (const [k,lo,hi] of CAM)
+    if (k in v) slider(box, k, lo, hi, v[k], val => send({type:'v4l2',name:k,value:val}));
+}
+
+// O stream sai em metade da resolução; o clique precisa voltar à escala do
+// frame original, senão a calibração sai com metade das coordenadas.
+function toFrame(ev) {
+  const r = view.getBoundingClientRect();
+  return [Math.round((ev.clientX-r.left) * (view.naturalWidth /r.width)  * 2),
+          Math.round((ev.clientY-r.top)  * (view.naturalHeight/r.height) * 2)];
+}
+
+view.addEventListener('click', ev => {
+  const [px,py] = toFrame(ev);
+  if (mode === 'pick') {
+    send({type:'pick', name:current, x:px, y:py});
+    setMode(null); say(`amostrando ${current}…`);
+  } else if (mode === 'corners') {
+    if (corners.length >= 4) corners = [];
+    corners.push([px,py]);
+    document.getElementById('ncorners').textContent = `${corners.length}/4 marcados`;
+    if (corners.length === 4) { send({type:'corners', corners}); setMode(null); }
+  }
+});
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('armPick').classList.toggle('on', m==='pick');
+  document.getElementById('armCorners').classList.toggle('on', m==='corners');
+  document.getElementById('colorcard').classList.toggle('armed', m==='pick');
+  document.getElementById('cornercard').classList.toggle('armed', m==='corners');
+  view.style.cursor = m ? 'crosshair' : 'default';
+}
+
+document.getElementById('armPick').onclick =
+  () => setMode(mode==='pick' ? null : 'pick');
+document.getElementById('armCorners').onclick =
+  () => { corners=[]; document.getElementById('ncorners').textContent='0/4 marcados';
+          setMode(mode==='corners' ? null : 'corners'); };
+document.getElementById('reloc').onclick = () => { send({type:'relocate'}); say('alinhando…'); };
+document.getElementById('save').onclick  = () => send({type:'save'});
+
+connect();
+setInterval(() => send({type:'stats'}), 1000);
+</script>
+</body>
+</html>

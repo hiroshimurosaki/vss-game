@@ -15,6 +15,7 @@ e `radio_communication` (consumindo /motorVelocities).
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -56,6 +57,33 @@ def generate_launch_description():
         DeclareLaunchArgument('vision_noise', default_value='0.0'),
         DeclareLaunchArgument('vision_delay', default_value='0.0'),
 
+        # Quem publica /game_data: o simulador ou a câmera. É a troca inteira —
+        # os dois publicam a mesma mensagem, então IA, game_master e TV não
+        # sabem qual dos dois está do outro lado.
+        DeclareLaunchArgument('use_vision', default_value='false',
+                              description='true = câmera, false = simulador'),
+        DeclareLaunchArgument('camera', default_value='/dev/video2'),
+        DeclareLaunchArgument('vision_port', default_value='8070'),
+
+        # Como o jogador humano entra. No simulador o teclado da GUI publica o
+        # /joy dele; com a câmera esse produtor some junto com o simulador, e
+        # sem uma destas duas opções o visitante fica sem volante.
+        DeclareLaunchArgument('use_joy', default_value='false',
+                              description='controle físico para o jogador'),
+        DeclareLaunchArgument('joy_device_id', default_value='0'),
+        DeclareLaunchArgument('deadzone', default_value='0.10'),
+        DeclareLaunchArgument('use_keyboard', default_value='false',
+                              description='WASD no lugar do controle'),
+
+        # A outra metade da troca do simulador: com a câmera, ninguém consome
+        # /motorVelocities — no simulador quem consumia era o próprio sim_node.
+        # Fica desligado por padrão porque, sem o Arduino na porta, o nó só
+        # enche o log de erro de serial.
+        DeclareLaunchArgument('use_radio', default_value='false',
+                              description='sobe a ponte serial para os robôs'),
+        DeclareLaunchArgument('serial_port', default_value='/dev/ttyUSB0'),
+        DeclareLaunchArgument('tx_rate_hz', default_value='30.0'),
+
         LogInfo(msg='[jogo] TV: http://localhost:8090/  |  '
                     'Operador: http://localhost:8090/operador  |  '
                     'Simulador: http://localhost:8080/'),
@@ -76,10 +104,25 @@ def generate_launch_description():
         ),
 
         Node(
+            package='vision_game',
+            executable='vision_node',
+            name='vision_game',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('use_vision')),
+            parameters=[{
+                'device': LaunchConfiguration('camera'),
+                'port': LaunchConfiguration('vision_port'),
+            }],
+            # ver comentário em vision.py: numpy 2.x do user-site quebra o cv2.
+            additional_env={'PYTHONNOUSERSITE': '1'},
+        ),
+
+        Node(
             package='simulator',
             executable='sim_node',
             name='simulator',
             output='screen',
+            condition=UnlessCondition(LaunchConfiguration('use_vision')),
             parameters=[{
                 'port': LaunchConfiguration('sim_port'),
                 'player_id': LaunchConfiguration('player_id'),
@@ -109,6 +152,35 @@ def generate_launch_description():
                 'max_linear_velocity': max_linear,
                 'max_angular_velocity': max_angular,
             }],
+        ),
+
+        # Controle físico do visitante. Remapeado para o /joy_N do robô dele —
+        # o `game_controller_node` vem do pacote `joy` do ROS, não deste repo.
+        Node(
+            package='joy',
+            executable='game_controller_node',
+            name='game_controller_node',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('use_joy')),
+            remappings=[('/joy', ['/joy_', LaunchConfiguration('player_id')])],
+            parameters=[{
+                'device_id': LaunchConfiguration('joy_device_id'),
+                'deadzone': LaunchConfiguration('deadzone'),
+                'autorepeat_rate': 20.0,
+                'coalesce_interval_ms': 1,
+            }],
+        ),
+
+        # Alternativa sem hardware. O keyboard_input publica em /joy_0 fixo,
+        # que é o robô da IA — então só faz sentido com a IA desligada
+        # (`ros2 topic pub --once /ai/enabled std_msgs/Bool '{data: false}'`),
+        # para dirigir na mão e conferir a cinemática.
+        Node(
+            package='controller_interpreter',
+            executable='keyboard_input',
+            name='keyboard_input',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('use_keyboard')),
         ),
 
         Node(
@@ -147,6 +219,20 @@ def generate_launch_description():
             parameters=[{
                 'axle_length': axle_length,
                 'wheel_speed_max': wheel_speed_max,
+                'verbose': verbose,
+            }],
+        ),
+
+        Node(
+            package='robot_communication',
+            executable='radio_communication',
+            name='radio_communication',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('use_radio')),
+            parameters=[{
+                'device_name': LaunchConfiguration('serial_port'),
+                'baud_rate': 115200,
+                'tx_rate_hz': LaunchConfiguration('tx_rate_hz'),
                 'verbose': verbose,
             }],
         ),
