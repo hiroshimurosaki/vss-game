@@ -204,6 +204,13 @@ void setup() {
   radio.setDataRate(RF24_1MBPS);
   radio.setPALevel(RF24_PA_LOW);
 
+  // Precisa espelhar o tx_bridge, que desliga o auto-ACK. O TX é broadcast para
+  // vários robôs no mesmo endereço e ninguém confirma; se o RX continuar com
+  // auto-ACK ligado, ele gasta tempo de ar respondendo a cada pacote para um
+  // transmissor que não está ouvindo — e com mais de um robô em campo essas
+  // respostas colidem entre si.
+  radio.setAutoAck(false);
+
   radio.startListening();
 
   Serial.print("robot_rx | ID: ");
