@@ -1,7 +1,7 @@
 from setuptools import setup
 from glob import glob
 
-package_name = 'game_master'
+package_name = 'diagnostics'
 
 setup(
     name=package_name,
@@ -17,11 +17,11 @@ setup(
     zip_safe=True,
     maintainer='Carrossel Caipira',
     maintainer_email='fernando.murusaki@unesp.br',
-    description='Arbitro da partida e telas da feira',
+    description='Painel de fluxo: quem envia o que para quem',
     license='MIT',
     entry_points={
         'console_scripts': [
-            'master_node = game_master.master_node:main',
+            'flow_panel = diagnostics.flow_node:main',
         ],
     },
 )

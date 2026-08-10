@@ -19,16 +19,25 @@
 #include <stdint.h>
 
 // ── Identidade deste robô ────────────────────────────────
-#define MY_ROBOT_ID 0
+#define MY_ROBOT_ID 1
 
 // ── Debug ────────────────────────────────────────────────
 // Serial.print custa tempo. Com DEBUG_RADIO ligado o loop fica mais lento e
 // pode perder pacotes. Ligue para diagnosticar, desligue para jogar.
+//
+// O `#ifndef` permite ligar na linha de comando sem editar o arquivo, para que o
+// default gravado na feira continue sendo o silencioso:
+//   arduino-cli compile --build-property \
+//       compiler.cpp.extra_flags=-DDEBUG_RADIO=1 firmware/robot_rx
+#ifndef DEBUG_RADIO
 #define DEBUG_RADIO 0
+#endif
+#ifndef DEBUG_RAW_PACKET
 #define DEBUG_RAW_PACKET 0
+#endif
 
 // ── Radio ────────────────────────────────────────────────
-RF24 radio(6, 10);
+RF24 radio(6, 10);                                      
 const byte address[6] = "00001";
 
 // Precisa bater com o TX e com o start_byte do nó ROS.
@@ -266,6 +275,12 @@ void loop() {
   // Todos os robôs escutam o mesmo endereço e canal, então cada um filtra por ID.
   // Sem isto, os quatro robôs obedecem ao mesmo comando ao mesmo tempo.
   if (packet.robot_id != MY_ROBOT_ID) {
+#if DEBUG_RADIO
+    // Sem este aviso o descarte por ID é indistinguível de "não chegou nada" —
+    // e os dois têm o mesmo sintoma: robô parado, log vazio.
+    Serial.print("ID ALHEIO: ");
+    Serial.println(packet.robot_id);
+#endif
     return;
   }
 

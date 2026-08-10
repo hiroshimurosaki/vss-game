@@ -1,0 +1,404 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vss.css — espécime</title>
+
+<!--
+  Espécime do sistema visual. Abra com dois cliques: os caminhos são relativos,
+  então funciona em `file://` sem subir nó nenhum.
+
+  Não é decoração — é a prova. Toda peça do vss.css aparece aqui nos dois temas,
+  e é onde se descobre que um token quebrou antes de descobrir no telão com o
+  ginásio cheio.
+-->
+
+<link rel="stylesheet" href="vss.css">
+
+<style>
+  body { padding: 0 0 var(--sp-10); }
+
+  .topo {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  .topo .linha {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-6);
+    max-width: 1180px; margin: 0 auto;
+  }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 0 var(--sp-6); }
+
+  section { margin-top: var(--sp-10); }
+  section > h2 {
+    font-size: var(--fs-xs); font-weight: 600; letter-spacing: .10em;
+    text-transform: uppercase; color: var(--muted);
+    padding-bottom: var(--sp-2); margin-bottom: var(--sp-5);
+    border-bottom: 1px solid var(--line);
+  }
+  section > h2 b { color: var(--text-dim); font-weight: 600; }
+
+  .grade { display: grid; gap: var(--sp-4); }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+  .amostra-cor {
+    display: flex; align-items: center; gap: var(--sp-3);
+    font-size: var(--fs-sm);
+  }
+  .amostra-cor i {
+    width: 34px; height: 34px; border-radius: var(--r-sm);
+    border: 1px solid var(--line); flex: none;
+  }
+  .amostra-cor code { font-family: var(--mono); color: var(--muted); font-size: var(--fs-xs); }
+
+  .icones { display: flex; flex-wrap: wrap; gap: var(--sp-5); }
+  .icones figure { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); width: 76px; }
+  .icones .vss-i { font-size: 26px; color: var(--text-dim); }
+  .icones figcaption { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  /* Palco: recorte de telão dentro da página clara, para julgar os dois lados
+     lado a lado sem trocar de aba. */
+  .palco {
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .palco-corpo { padding: var(--sp-6); display: grid; gap: var(--sp-5); }
+  .placar { display: flex; align-items: center; justify-content: center; gap: var(--sp-6); }
+  .placar .lado { text-align: center; }
+  .placar .quem {
+    font-size: var(--fs-sm); font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .placar .n { font-size: clamp(48px, 9vw, 108px); }
+  .placar .x { font-size: clamp(20px, 3vw, 40px); color: var(--muted); }
+
+  /* Comparação de numeral. Fundo escuro porque é onde o placar vive, e os
+     quatro lado a lado porque numeral só se julga comparando. */
+  .opcoes {
+    display: grid; gap: 1px;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .opcao { background: var(--bg); color: var(--text); padding: var(--sp-5); text-align: center; }
+  .opcao.escolhida { background: var(--surface-1); }
+  .opcao .tag {
+    font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: var(--sp-4);
+  }
+  .opcao .tag b { color: var(--menta); font-weight: 600; }
+  .opcao .n { font-size: 62px; }
+  .opcao .t { font-size: 38px; color: var(--text-dim); margin-top: var(--sp-3); }
+
+  .larguras > div { margin-bottom: var(--sp-2); }
+  .larguras b { font-family: var(--display); font-weight: 700; font-size: 30px; }
+  .larguras span { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); margin-left: var(--sp-3); }
+</style>
+
+<div class="vss-band tall"></div>
+
+<div class="topo">
+  <div class="linha">
+    <span class="vss-brand" style="font-size:22px">Carrossel Caipira</span>
+    <span class="vss-tagline">espécime do sistema visual</span>
+    <span class="vss-spacer"></span>
+    <button class="vss-btn sm" id="tema">
+      <span class="vss-i alvo"></span> <span id="temaTxt">tema claro</span>
+    </button>
+  </div>
+</div>
+
+<main>
+
+<section>
+  <h2>Marca — <b>a faixa é a assinatura</b></h2>
+  <p class="vss-hint" style="margin-bottom:var(--sp-4)">
+    Roxo → marinho → esmeralda, a mesma do site da equipe e na mesma ordem em
+    todas as telas. É o único elemento decorativo do sistema.
+  </p>
+  <div class="vss-band tall" style="border-radius:var(--r-sm)"></div>
+  <div style="height:var(--sp-3)"></div>
+  <div class="vss-band" style="border-radius:var(--r-sm)"></div>
+</section>
+
+<section>
+  <h2>Cores — <b>papel fixo, não decoração</b></h2>
+  <div class="grade g3">
+    <div class="amostra-cor"><i style="background:var(--roxo)"></i>     <div>roxo<br><code>#8B3FD1</code></div></div>
+    <div class="amostra-cor"><i style="background:var(--magenta)"></i>  <div>magenta — <b>a IA</b><br><code>#C049D6</code></div></div>
+    <div class="amostra-cor"><i style="background:var(--azul)"></i>     <div>azul — apoio<br><code>#4A7FE0</code></div></div>
+    <div class="amostra-cor"><i style="background:var(--ciano)"></i>    <div>ciano — <b>o visitante</b><br><code>#3AC8E8</code></div></div>
+    <div class="amostra-cor"><i style="background:var(--menta)"></i>    <div>menta — sucesso<br><code>#2EE6A8</code></div></div>
+    <div class="amostra-cor"><i style="background:var(--esmeralda)"></i><div>esmeralda<br><code>#12A98A</code></div></div>
+    <div class="amostra-cor"><i style="background:var(--marinho)"></i>  <div>marinho<br><code>#0E1E4F</code></div></div>
+    <div class="amostra-cor"><i style="background:var(--laranja)"></i>  <div>laranja — a bola<br><code>#FF8C1A</code></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Tipografia — <b>Advent Pro variável, Poppins, Fira Mono</b></h2>
+  <div class="grade g2">
+    <div class="vss-card">
+      <h2>Advent Pro, eixo de largura</h2>
+      <div class="larguras">
+        <div><b style="font-stretch:var(--wd-normal)">3 × 1  2:00</b><span>--wd-normal · wordmark</span></div>
+        <div><b style="font-stretch:var(--wd-wide)">3 × 1  2:00</b><span>--wd-wide · etiqueta</span></div>
+        <div><b style="font-stretch:var(--wd-placar)">3 × 1  2:00</b><span>--wd-placar · placar</span></div>
+      </div>
+      <p class="vss-hint">
+        Um arquivo de 49 KB. Se as três linhas saírem com a mesma largura, o
+        eixo variável não sobreviveu ao subset.
+      </p>
+    </div>
+    <div class="vss-card">
+      <h2>Poppins e Fira Mono</h2>
+      <p style="font-size:var(--fs-lg);font-weight:600">Título em Poppins 600</p>
+      <p style="margin-top:var(--sp-2)">
+        Corpo em Poppins 400. Você contra o Franky 2.2: três gols vencem, dois
+        minutos no relógio, um controle. Ação, coração, ç, ã, õ, ê.
+      </p>
+      <p class="vss-mono" style="margin-top:var(--sp-3);font-size:var(--fs-sm);color:var(--text-dim)">
+        /game_data  30.1 Hz  ball=true  x=+0.412 y=-0.088
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Placar — <b>qual numeral?</b></h2>
+  <p class="vss-hint" style="margin-bottom:var(--sp-4)">
+    O texto mais importante do projeto e o único que precisa ser lido do fundo
+    do ginásio. Julgue de longe, não de perto: afaste-se da tela ou aperte
+    <span class="vss-code">Ctrl −</span> até a página ficar pequena. O que
+    sobreviver é o certo.
+  </p>
+  <div class="opcoes" data-theme="dark">
+    <div class="opcao escolhida">
+      <div class="tag">A · Poppins 900 <b>— em uso</b></div>
+      <div class="vss-num n" style="--num-family:var(--font);--num-weight:900;--num-stretch:100%">3 × 1</div>
+      <div class="vss-num t" style="--num-family:var(--font);--num-weight:900;--num-stretch:100%">1:47.3</div>
+    </div>
+    <div class="opcao">
+      <div class="tag">B · Poppins 700</div>
+      <div class="vss-num n" style="--num-family:var(--font);--num-weight:700;--num-stretch:100%">3 × 1</div>
+      <div class="vss-num t" style="--num-family:var(--font);--num-weight:700;--num-stretch:100%">1:47.3</div>
+    </div>
+    <div class="opcao">
+      <div class="tag">C · Advent Pro 900, expandida</div>
+      <div class="vss-num n" style="--num-family:var(--display);--num-weight:900;--num-stretch:200%">3 × 1</div>
+      <div class="vss-num t" style="--num-family:var(--display);--num-weight:900;--num-stretch:200%">1:47.3</div>
+    </div>
+    <div class="opcao">
+      <div class="tag">D · Advent Pro 700, largura de placar</div>
+      <div class="vss-num n" style="--num-family:var(--display);--num-weight:700;--num-stretch:175%">3 × 1</div>
+      <div class="vss-num t" style="--num-family:var(--display);--num-weight:700;--num-stretch:175%">1:47.3</div>
+    </div>
+  </div>
+  <p class="vss-hint">
+    Trocar de opção no produto inteiro é editar três tokens
+    (<span class="vss-code">--num-family</span>,
+    <span class="vss-code">--num-weight</span>,
+    <span class="vss-code">--num-stretch</span>) num lugar só.
+  </p>
+</section>
+
+<section>
+  <h2>Ícones — <b>SVG, nunca caractere</b></h2>
+  <p class="vss-hint" style="margin-bottom:var(--sp-4)">
+    Nenhuma fonte da marca tem seta, check ou aviso — medido. Máscara pintada
+    com <code class="vss-code">currentColor</code>, então herda cor e tamanho do
+    texto ao lado.
+  </p>
+  <div class="icones">
+    <figure><span class="vss-i seta"></span><figcaption>seta</figcaption></figure>
+    <figure><span class="vss-i seta-baixo"></span><figcaption>seta-baixo</figcaption></figure>
+    <figure><span class="vss-i check" style="color:var(--ok)"></span><figcaption>check</figcaption></figure>
+    <figure><span class="vss-i x" style="color:var(--danger)"></span><figcaption>x</figcaption></figure>
+    <figure><span class="vss-i aviso" style="color:var(--warn)"></span><figcaption>aviso</figcaption></figure>
+    <figure><span class="vss-i info"></span><figcaption>info</figcaption></figure>
+    <figure><span class="vss-i alvo"></span><figcaption>alvo</figcaption></figure>
+    <figure><span class="vss-i play"></span><figcaption>play</figcaption></figure>
+    <figure><span class="vss-i pause"></span><figcaption>pause</figcaption></figure>
+    <figure><span class="vss-i voltar"></span><figcaption>voltar</figcaption></figure>
+    <figure><span class="vss-i chevron"></span><figcaption>chevron</figcaption></figure>
+    <figure><span class="vss-i radio"></span><figcaption>radio</figcaption></figure>
+    <figure><span class="vss-i camera"></span><figcaption>camera</figcaption></figure>
+    <figure><span class="vss-i chip"></span><figcaption>chip</figcaption></figure>
+    <figure><span class="vss-i controle"></span><figcaption>controle</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2>Controles</h2>
+  <div class="grade g2">
+    <div class="vss-card">
+      <h2>Botões</h2>
+      <div class="vss-btns">
+        <button class="vss-btn primary">Começar <span class="vss-kbd">Enter</span></button>
+        <button class="vss-btn">Cancelar</button>
+      </div>
+      <div class="vss-btns" style="margin-top:var(--sp-2)">
+        <button class="vss-btn visitante">Gol do jogador <span class="vss-kbd">1</span></button>
+        <button class="vss-btn ia">Gol do Franky <span class="vss-kbd">2</span></button>
+      </div>
+      <div class="vss-btns" style="margin-top:var(--sp-2)">
+        <button class="vss-btn sm on"><span class="vss-i play"></span> IA ligada</button>
+        <button class="vss-btn sm danger">Encerrar</button>
+        <button class="vss-btn sm" disabled>Indisponível</button>
+      </div>
+    </div>
+    <div class="vss-card">
+      <h2>Entrada</h2>
+      <input class="vss-input nome" placeholder="nome do visitante">
+      <div class="vss-slider" style="margin-top:var(--sp-4)">
+        <label for="h1">h_min</label>
+        <input type="range" id="h1" min="0" max="180" value="98">
+        <output>98</output>
+      </div>
+      <div class="vss-slider">
+        <label for="s1">s_min</label>
+        <input type="range" id="s1" min="0" max="255" value="55">
+        <output>55</output>
+      </div>
+      <select class="vss-select" style="margin-top:var(--sp-2)">
+        <option>Fácil</option><option selected>Médio</option><option>Difícil</option>
+      </select>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Estado</h2>
+  <div class="grade g2">
+    <div class="vss-card">
+      <h2>Etiquetas</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:var(--sp-2)">
+        <span class="vss-badge live"><span class="vss-dot pulsing"></span> ao vivo</span>
+        <span class="vss-badge"><span class="vss-dot"></span> parado</span>
+        <span class="vss-badge warn"><span class="vss-i aviso"></span> sem bola</span>
+        <span class="vss-badge danger"><span class="vss-i x"></span> rádio mudo</span>
+        <span class="vss-badge ia">FRANKY 2.2</span>
+        <span class="vss-badge visitante">VISITANTE</span>
+      </div>
+      <table class="vss-table" style="margin-top:var(--sp-4)">
+        <tr><td>frames</td><td>30.1 Hz</td></tr>
+        <tr><td>bola detectada</td><td class="ok">sim</td></tr>
+        <tr><td>robô 0</td><td class="ok">visto</td></tr>
+        <tr><td>robô 1</td><td class="bad">ausente</td></tr>
+      </table>
+    </div>
+    <div class="vss-card">
+      <h2>Métricas</h2>
+      <div class="vss-stats">
+        <div class="vss-stat ok"><span class="k">visão</span><span class="v">30.1<small>Hz</small></span></div>
+        <div class="vss-stat"><span class="k">joy</span><span class="v">12.0<small>Hz</small></span></div>
+        <div class="vss-stat warn"><span class="k">entrega</span><span class="v">86<small>%</small></span></div>
+        <div class="vss-stat bad"><span class="k">robô 1</span><span class="v">—</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Fluxo — <b>quem envia o que para quem</b></h2>
+  <p class="vss-hint" style="margin-bottom:var(--sp-4)">
+    A cor nunca é o único sinal: cada estado também traz ícone e texto.
+  </p>
+  <div class="vss-card">
+    <div class="vss-node ok">
+      <span class="vss-i camera lg" style="color:var(--ok)"></span>
+      <div><div class="nome">vision_game</div><div class="detalhe">bola vista · 2 robôs</div></div>
+      <span class="vss-stat ok" style="text-align:right"><span class="k">taxa</span><span class="v">30.1<small>Hz</small></span></span>
+    </div>
+    <div class="vss-edge ok">
+      <span class="vss-i seta-baixo"></span>
+      <span class="vss-topic ok">/game_data</span>
+      <span>GameData · último há 33 ms</span>
+    </div>
+    <div class="vss-node ok">
+      <span class="vss-i chip lg" style="color:var(--ok)"></span>
+      <div><div class="nome">game_master</div><div class="detalhe">JOGANDO · /ai/enabled = true</div></div>
+      <span class="vss-badge live"><span class="vss-dot pulsing"></span> 1:47</span>
+    </div>
+    <div class="vss-edge warn">
+      <span class="vss-i seta-baixo"></span>
+      <span class="vss-topic warn">/motorVelocities</span>
+      <span>chegando, mas o robô 1 não confirma</span>
+    </div>
+    <div class="vss-node bad">
+      <span class="vss-i radio lg" style="color:var(--danger)"></span>
+      <div><div class="nome">robô 1</div><div class="detalhe">PWM 180/180 aplicado, roda parada</div></div>
+      <span class="vss-badge danger"><span class="vss-i x"></span> alimentação</span>
+    </div>
+    <div class="vss-edge unknown">
+      <span class="vss-i seta-baixo"></span>
+      <span class="vss-topic">/joy_1</span>
+      <span>nada chegou desde que o painel abriu</span>
+    </div>
+    <div class="vss-node unknown">
+      <span class="vss-i controle lg"></span>
+      <div><div class="nome">controle do visitante</div><div class="detalhe">nenhum gamepad em /dev/input</div></div>
+      <span class="vss-badge">sem dado</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Palco — <b>como isto se lê no telão</b></h2>
+  <div class="palco" data-theme="dark">
+    <div class="vss-band tall"></div>
+    <div class="palco-corpo">
+      <div style="display:flex;align-items:center;gap:var(--sp-4)">
+        <span class="vss-brand" style="font-size:24px">Carrossel Caipira</span>
+        <span class="vss-tagline">futebol de robôs · UNESP Bauru</span>
+        <span class="vss-spacer"></span>
+        <span class="vss-badge">MÉDIO</span>
+      </div>
+
+      <div class="placar">
+        <div class="lado">
+          <div class="quem" style="color:var(--magenta)">Franky 2.2</div>
+          <div class="vss-num n" style="color:var(--magenta)">1</div>
+        </div>
+        <div class="vss-num x">×</div>
+        <div class="lado">
+          <div class="quem" style="color:var(--ciano)">Fernando</div>
+          <div class="vss-num n" style="color:var(--ciano)">3</div>
+        </div>
+      </div>
+
+      <div style="text-align:center">
+        <div class="vss-num" style="font-size:clamp(32px,6vw,72px)">1:47.3</div>
+      </div>
+
+      <ol class="vss-rank" style="max-width:420px;margin:0 auto;width:100%">
+        <li class="vss-rank-row"><span class="vss-rank-pos">1</span><span class="vss-rank-name">MARIA</span><span class="vss-rank-time">0:42.1</span></li>
+        <li class="vss-rank-row highlight"><span class="vss-rank-pos">2</span><span class="vss-rank-name">FERNANDO</span><span class="vss-rank-time">0:51.8</span></li>
+        <li class="vss-rank-row"><span class="vss-rank-pos">3</span><span class="vss-rank-name">JOÃO PEDRO</span><span class="vss-rank-time">1:03.4</span></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div class="vss-conn on"><span class="vss-i aviso"></span> Sem conexão com o nó</div>
+
+<script>
+  // O espécime nasce no tema da ferramenta, que é onde ele é usado; o recorte
+  // "Palco" mostra o outro tema sem precisar trocar. O botão troca a página
+  // inteira para conferir cada peça nos dois.
+  const raiz = document.documentElement;
+  const btn  = document.getElementById('tema');
+  const txt  = document.getElementById('temaTxt');
+  raiz.dataset.theme = 'light';
+  btn.onclick = () => {
+    const claro = raiz.dataset.theme === 'light';
+    if (claro) delete raiz.dataset.theme; else raiz.dataset.theme = 'light';
+    txt.textContent = claro ? 'tema claro' : 'tema escuro';
+  };
+</script>

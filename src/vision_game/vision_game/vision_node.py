@@ -499,8 +499,32 @@ class VisionNode(Node):
         return vis
 
     def _start_web(self):
-        thread = threading.Thread(target=self._run_web, daemon=True)
+        thread = threading.Thread(target=self._web_thread_guard,
+                                  args=(self._run_web,), daemon=True)
         thread.start()
+
+    def _web_thread_guard(self, run):
+        """Roda o servidor web e NÃO deixa o thread morrer calado.
+
+        Este thread é daemon. Sem esta guarda, qualquer erro ao montar as rotas
+        — uma rota malformada, um caminho que não existe — mata só o thread: o
+        nó segue vivo, publicando tudo normalmente, e a porta simplesmente
+        nunca abre. O navegador responde "connection refused", que não aponta
+        para lugar nenhum, e o `--check` mostra o nó rodando e a lista de
+        portas vazia.
+
+        Já aconteceu exatamente assim, com `/fonts/{{name}}` escrito com
+        chave dupla. O traceback existia e ficava só dentro do thread.
+        """
+        import traceback
+        try:
+            run()
+        except Exception:
+            # A visão continua publicando /game_data sem a GUI — derrubar o nó
+            # por causa da calibração seria pior. Mas tem que ser visível.
+            self.get_logger().error(
+                'servidor da calibração caiu ao subir; a visão segue '
+                'publicando, mas a GUI não abre:\n' + traceback.format_exc())
 
     def _run_web(self):
         loop = asyncio.new_event_loop()
@@ -508,6 +532,10 @@ class VisionNode(Node):
 
         app = web.Application()
         app.router.add_get('/', self._serve_index)
+        app.router.add_get('/vss.css', self._serve_css)
+        # Fontes auto-hospedadas. A feira não tem rede garantida e a
+        # identidade do telão depende delas — nada de CDN.
+        app.router.add_get('/fonts/{name}', self._serve_font)
         app.router.add_get('/stream.mjpg', self._serve_stream)
         app.router.add_get('/ws', self._ws)
 
@@ -533,6 +561,39 @@ class VisionNode(Node):
     async def _serve_index(self, request):
         share = get_package_share_directory('vision_game')
         return web.FileResponse(os.path.join(share, 'web', 'index.html'))
+
+    async def _serve_css(self, request):
+        # Identidade visual compartilhada — ver comentário em sim_node.
+        share = get_package_share_directory('vision_game')
+        return web.FileResponse(os.path.join(share, 'web', 'vss.css'))
+
+    #: Nomes de fonte servidos em /fonts. Fechado de propósito — ver _serve_font.
+    async def _serve_font(self, request):
+        """Fonte auto-hospedada, uma por vez.
+
+        Não usa `add_static`: com `colcon build --symlink-install` cada .woff2
+        instalado é um symlink para o repositório, e o `add_static` do aiohttp
+        recusa servir através de symlink (`follow_symlinks=False`). O sintoma é
+        cruel — 404 em toda fonte, a tela cai calada para a fonte do sistema e
+        nada aparece no log do nó. O `FileResponse` atravessa o symlink, que é
+        o mesmo motivo de o /vss.css nunca ter dado problema.
+
+        O nome vem da URL, então é conferido antes de virar caminho: só arquivo
+        que esteja de fato dentro do diretório de fontes é servido.
+        """
+        base = os.path.join(
+            get_package_share_directory('vision_game'), 'web', 'fonts')
+        target = os.path.normpath(os.path.join(base, request.match_info['name']))
+
+        if os.path.dirname(target) != os.path.normpath(base) or not os.path.isfile(target):
+            raise web.HTTPNotFound()
+
+        # O `mimetypes` do Python não conhece .woff2 e devolveria
+        # application/octet-stream. Navegador aceita assim, mas declarar o tipo
+        # certo é de graça e tira o palpite do caminho.
+        return web.FileResponse(
+            target, headers={'Content-Type': 'font/woff2',
+                             'Cache-Control': 'public, max-age=86400'})
 
     async def _serve_stream(self, request):
         """MJPEG multipart — funciona em <img src> sem uma linha de JS."""

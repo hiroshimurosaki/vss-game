@@ -4,147 +4,212 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Operador — Carrossel Caipira</title>
+<link rel="stylesheet" href="/vss.css">
 <style>
-  :root {
-    --menta: #2EE6A8; --ciano: #3AC8E8; --magenta: #A94BD6; --laranja: #FF8C1A;
-    --bg: #0d1117; --panel: #161b22; --line: #262d38; --text: #e6edf3; --muted: #8b949e;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* ═══ PAINEL DO OPERADOR ══════════════════════════════════════════════════
+
+     Quem usa isto está de pé, com fila esperando, olhando para o telão e não
+     para o painel. As decisões seguem daí:
+
+     · O estado da partida fica GRUDADO no topo. Nunca precisa rolar para
+       saber se está jogando, quanto está e quanto tempo.
+     · Alvos grandes (40 px de altura mínima, do vss.css) e atalho de teclado
+       impresso ao lado de cada ação — a mão certa é a que não precisa mirar.
+     · A dificuldade agora MOSTRA qual está ativa. Antes eram três botões
+       iguais e uma linha de texto embaixo dizendo "Agora: MEDIO"; com pressa
+       ninguém lê a linha, e o operador apertava de novo o que já estava.
+     · Apagar o ranking pede confirmação NA PRÓPRIA TELA, em dois toques.
+       O `confirm()` do navegador trava a janela inteira e, num quiosque em
+       tela cheia, isso é pior que o acidente que ele previne.               */
+
   body {
-    background: var(--bg); color: var(--text);
-    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
-    padding: 18px; max-width: 620px; margin: 0 auto;
+    padding: var(--sp-4);
+    max-width: 660px;
+    margin: 0 auto;
+    padding-bottom: var(--sp-10);
+  }
+
+  h1 { font-family: var(--display); font-weight: 900; text-transform: uppercase;
+       font-size: var(--fs-xl); letter-spacing: .01em; }
+
+  .head { margin-bottom: var(--sp-4); }
+  .head .vss-hint { margin-top: var(--sp-1); }
+
+  /* ── Estado, sempre visível ───────────────────────────────────────────── */
+
+  .status {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    margin-bottom: var(--sp-3);
+
+    /* Opaco, não translúcido: precisa cobrir o que passa por baixo ao rolar. */
+    background: var(--surface-1);
+    box-shadow: var(--shadow-2);
+  }
+
+  .status-line {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+  }
+
+  .score-now {
+    font-size: var(--fs-2xl);
+    font-family: var(--display);
+    font-weight: 900;
+    letter-spacing: .01em;
     font-variant-numeric: tabular-nums;
   }
-  h1 { font-size: 17px; font-weight: 650; margin-bottom: 3px; }
-  .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
+  .score-now .ia { color: var(--ia); }
+  .score-now .visitante { color: var(--visitante); }
+  .score-now .x { color: var(--muted); }
 
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 15px; margin-bottom: 13px; }
-  .card h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin-bottom: 11px; }
-
-  .statusline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .badge { padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 650; letter-spacing: .05em; border: 1px solid var(--line); }
-  .badge.live { color: var(--menta); border-color: rgba(46,230,168,.4); }
-  .badge.wait { color: var(--muted); }
-  .badge.warn { color: var(--laranja); border-color: #5a3a1e; }
-
-  .score-now { font-size: 27px; font-weight: 750; letter-spacing: -.02em; }
-  .clock-now { font-size: 27px; font-weight: 750; margin-left: auto; }
-
-  input[type=text] {
-    width: 100%; background: #0d1117; color: var(--text);
-    border: 1px solid var(--line); border-radius: 7px;
-    padding: 12px 13px; font: inherit; font-size: 17px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .04em;
+  .clock-now {
+    margin-left: auto;
+    font-size: var(--fs-2xl);
+    font-family: var(--display);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
   }
-  input[type=text]:focus { outline: none; border-color: var(--ciano); }
+  .clock-now.warn { color: var(--laranja); }
 
-  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-  button {
-    flex: 1 1 auto; min-width: 92px;
-    background: #21262d; color: var(--text);
-    border: 1px solid var(--line); border-radius: 7px;
-    padding: 11px 13px; font: inherit; font-size: 14px; font-weight: 600;
-    cursor: pointer; transition: background .12s, border-color .12s;
+  .card + .card { margin-top: var(--sp-3); }
+  .vss-card { margin-bottom: var(--sp-3); }
+
+  /* ── Controle segmentado ──────────────────────────────────────────────── */
+
+  .segmented {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    overflow: hidden;
   }
-  button:hover { background: #2d333b; }
-  button:active { transform: translateY(1px); }
-  button:disabled { opacity: .38; cursor: not-allowed; }
-
-  button.primary { background: linear-gradient(100deg, #1d8f6b, #1c7fa0); border-color: transparent; }
-  button.primary:hover { background: linear-gradient(100deg, #22a87d, #2193ba); }
-  button.player { border-color: rgba(58,200,232,.45); color: var(--ciano); }
-  button.ai { border-color: rgba(169,75,214,.45); color: var(--magenta); }
-  button.danger { border-color: #5a2020; color: #f08a8a; }
-
-  kbd { display:inline-block; min-width:19px; padding:1px 5px; background:#21262d;
-        border:1px solid var(--line); border-bottom-width:2px; border-radius:4px;
-        font:11px ui-monospace,Menlo,monospace; text-align:center; }
-
-  .hint { color: var(--muted); font-size: 12px; margin-top: 9px; line-height: 1.45; }
-
-  ol { list-style: none; counter-reset: r; }
-  ol li {
-    counter-increment: r; display: flex; gap: 10px; align-items: baseline;
-    padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 13.5px;
+  .segmented .vss-btn {
+    flex: 1;
+    border: none;
+    border-radius: 0;
+    background: transparent;
   }
-  ol li::before { content: counter(r); color: var(--muted); font-weight: 650; min-width: 1.5em; }
-  ol li .t { margin-left: auto; font-weight: 650; }
+  .segmented .vss-btn + .vss-btn { border-left: 1px solid var(--line); }
+  .segmented .vss-btn[aria-pressed="true"] {
+    background: var(--ciano-20);
+    color: var(--ciano);
+    box-shadow: inset 0 -2px 0 var(--ciano);
+  }
 
-  #conn { font-size: 12px; color: #f0883e; margin-top: 10px; display: none; }
-  #conn.on { display: block; }
+  /* ── Confirmação em dois toques ───────────────────────────────────────── */
+
+  .confirm-row { display: none; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+  .confirm-row.on { display: flex; }
+  .confirm-row .q { font-size: var(--fs-sm); color: var(--laranja); flex: 1; }
+
+  /* ── Ranking ──────────────────────────────────────────────────────────── */
+
+  .vss-rank-row { font-size: var(--fs-md); }
+  .empty { color: var(--muted); font-size: var(--fs-sm); padding: var(--sp-2) 0; }
 </style>
 </head>
 <body>
 
-<h1>Painel do operador</h1>
-<div class="sub">A TV está em <strong>/</strong> — abra numa segunda janela, tela cheia.</div>
+<!-- A mesma assinatura da TV. O operador fica no estande, ao lado do
+     telão: as duas telas têm que se reconhecer. -->
+<div class="vss-bunting" style="margin:calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4)"></div>
 
-<div class="card">
-  <div class="statusline">
-    <span class="badge wait" id="stateBadge">—</span>
-    <span class="score-now"><span id="sAi">0</span> × <span id="sPlayer">0</span></span>
+<div class="head">
+  <h1>Painel do operador</h1>
+  <p class="vss-hint">
+    A TV está em <a href="/" target="_blank" style="color:var(--ciano)">/</a> —
+    abra numa segunda janela, em tela cheia.
+  </p>
+</div>
+
+<!-- ESTADO ──────────────────────────────────────────────────────────────── -->
+<div class="vss-card status">
+  <div class="status-line">
+    <span class="vss-badge" id="stateBadge"><span class="vss-dot"></span> —</span>
+    <span class="score-now">
+      <span class="ia" id="sAi">0</span><span class="x"> × </span><span class="visitante" id="sPlayer">0</span>
+    </span>
     <span class="clock-now" id="sClock">0:00.0</span>
   </div>
-  <div class="hint" id="whoLine">Nenhum jogador.</div>
+  <p class="vss-hint" id="whoLine">Nenhum jogador.</p>
 </div>
 
-<div class="card">
+<!-- NOVO JOGADOR ────────────────────────────────────────────────────────── -->
+<div class="vss-card">
   <h2>Novo jogador</h2>
-  <input type="text" id="name" placeholder="Nome do visitante" maxlength="14" autocomplete="off">
-  <div class="btns">
-    <button class="primary" id="btnStart">Começar (Enter)</button>
-    <button id="btnAbort">Cancelar</button>
+  <label class="vss-sr" for="name">Nome do visitante</label>
+  <input type="text" id="name" class="vss-input nome"
+         placeholder="Nome do visitante" maxlength="14" autocomplete="off" autofocus>
+  <div class="vss-btns" style="margin-top:var(--sp-3)">
+    <button class="vss-btn primary" id="btnStart">Começar <span class="vss-kbd">Enter</span></button>
+    <button class="vss-btn" id="btnAbort">Cancelar</button>
   </div>
+  <p class="vss-hint">Aparece em caixa alta no telão — até 14 letras.</p>
 </div>
 
-<div class="card">
+<!-- DURANTE A PARTIDA ───────────────────────────────────────────────────── -->
+<div class="vss-card">
   <h2>Durante a partida</h2>
-  <div class="btns">
-    <button class="player" id="btnGoalPlayer">Gol do jogador <kbd>1</kbd></button>
-    <button class="ai" id="btnGoalAi">Gol do robô <kbd>2</kbd></button>
+  <div class="vss-btns">
+    <button class="vss-btn visitante" id="btnGoalPlayer">Gol do jogador <span class="vss-kbd">1</span></button>
+    <button class="vss-btn ia" id="btnGoalAi">Gol do Franky <span class="vss-kbd">2</span></button>
   </div>
-  <div class="btns">
-    <button id="btnPause">Pausar <kbd>espaço</kbd></button>
+  <div class="vss-btns" style="margin-top:var(--sp-2)">
+    <button class="vss-btn" id="btnPause">Pausar <span class="vss-kbd">espaço</span></button>
   </div>
-  <p class="hint">
+  <p class="vss-hint">
     Os botões de gol são o <strong>seguro</strong>: valem quando a visão não
     enxergar o lance. Funcionam mesmo com a detecção automática ligada.
   </p>
 </div>
 
-<div class="card">
-  <h2>Dificuldade do robô</h2>
-  <div class="btns">
-    <button data-diff="FACIL">Fácil</button>
-    <button data-diff="MEDIO">Médio</button>
-    <button data-diff="DIFICIL">Difícil</button>
+<!-- DIFICULDADE ─────────────────────────────────────────────────────────── -->
+<div class="vss-card">
+  <h2>Dificuldade do Franky 2.2</h2>
+  <div class="segmented" role="group" aria-label="Dificuldade do Franky 2.2">
+    <button class="vss-btn" data-diff="FACIL"   aria-pressed="false">Fácil</button>
+    <button class="vss-btn" data-diff="MEDIO"   aria-pressed="false">Médio</button>
+    <button class="vss-btn" data-diff="DIFICIL" aria-pressed="false">Difícil</button>
   </div>
-  <p class="hint" id="diffNow">—</p>
+  <p class="vss-hint">Vale já na próxima partida. Suba se o visitante estiver ganhando fácil.</p>
 </div>
 
-<div class="card">
+<!-- RANKING ─────────────────────────────────────────────────────────────── -->
+<div class="vss-card">
   <h2>Ranking</h2>
-  <ol id="rank"></ol>
-  <div class="btns">
-    <button class="danger" id="btnClear">Apagar ranking</button>
+  <div class="vss-rank" id="rank"></div>
+
+  <div class="vss-btns" style="margin-top:var(--sp-3)">
+    <button class="vss-btn danger" id="btnClear">Apagar ranking</button>
   </div>
-  <p class="hint">Salvo em disco. Sobrevive a reiniciar o programa.</p>
+
+  <div class="confirm-row" id="clearConfirm">
+    <span class="q">Apagar todos os tempos? Não dá para desfazer.</span>
+    <button class="vss-btn danger sm" id="btnClearYes">Apagar</button>
+    <button class="vss-btn ghost sm" id="btnClearNo">Cancelar</button>
+  </div>
+
+  <p class="vss-hint">Salvo em disco. Sobrevive a reiniciar o programa.</p>
 </div>
 
-<div id="conn">sem conexão com o árbitro</div>
+<div class="vss-conn" id="conn"><span class="vss-dot"></span> sem conexão com o árbitro</div>
 
 <script>
 'use strict';
 
 let ws = null, state = null;
 const nameInput = document.getElementById('name');
+const $ = (id) => document.getElementById(id);
 
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen = () => document.getElementById('conn').classList.remove('on');
+  ws.onopen = () => $('conn').classList.remove('on');
   ws.onclose = () => {
-    document.getElementById('conn').classList.add('on');
+    $('conn').classList.add('on');
     setTimeout(connect, 1000);
   };
   ws.onmessage = (e) => { state = JSON.parse(e.data); render(); };
@@ -165,19 +230,31 @@ const LABEL = {
   JOGANDO: 'jogando', GOL: 'gol', FIM: 'resultado', PAUSA: 'pausado',
 };
 
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
+
 function render() {
   if (!state) return;
 
-  const badge = document.getElementById('stateBadge');
-  badge.textContent = LABEL[state.state] || state.state;
-  badge.className = 'badge ' +
-    (state.state === 'JOGANDO' ? 'live' : state.state === 'PAUSA' ? 'warn' : 'wait');
+  const badge = $('stateBadge');
+  badge.innerHTML = `<span class="vss-dot${state.state === 'JOGANDO' ? ' pulsing' : ''}"></span> ` +
+                    escapeHtml(LABEL[state.state] || state.state);
+  badge.className = 'vss-badge ' +
+    (state.state === 'JOGANDO' ? 'live' : state.state === 'PAUSA' ? 'warn' : '');
 
-  document.getElementById('sAi').textContent = state.ai_score;
-  document.getElementById('sPlayer').textContent = state.player_score;
-  document.getElementById('sClock').textContent = fmt(state.elapsed);
+  $('sAi').textContent = state.ai_score;
+  $('sPlayer').textContent = state.player_score;
+  $('sClock').textContent = fmt(state.elapsed);
 
-  document.getElementById('whoLine').textContent = state.player_name
+  // O relógio fica laranja no mesmo limiar da TV, para os dois contarem a
+  // mesma história quando o operador olha de um para o outro.
+  const left = Math.max(0, (state.time_limit || 0) - state.elapsed);
+  $('sClock').classList.toggle('warn', state.state === 'JOGANDO' && left < 30);
+
+  $('whoLine').textContent = state.player_name
     ? `Jogador: ${state.player_name}` + (state.state === 'FIM'
         ? (state.player_won
             ? ` — venceu em ${fmt(state.elapsed)}` +
@@ -186,42 +263,52 @@ function render() {
         : '')
     : 'Nenhum jogador.';
 
-  document.getElementById('diffNow').textContent = `Agora: ${state.difficulty || '—'}`;
+  for (const b of document.querySelectorAll('[data-diff]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.diff === state.difficulty));
+  }
 
   const running = ['JOGANDO', 'GOL', 'PAUSA'].includes(state.state);
-  document.getElementById('btnGoalPlayer').disabled = !running;
-  document.getElementById('btnGoalAi').disabled = !running;
-  document.getElementById('btnPause').disabled = !['JOGANDO', 'GOL', 'CONTAGEM', 'PAUSA'].includes(state.state);
-  document.getElementById('btnPause').textContent =
-    state.state === 'PAUSA' ? 'Continuar' : 'Pausar';
+  $('btnGoalPlayer').disabled = !running;
+  $('btnGoalAi').disabled = !running;
+  $('btnPause').disabled = !['JOGANDO', 'GOL', 'CONTAGEM', 'PAUSA'].includes(state.state);
+  $('btnPause').innerHTML = (state.state === 'PAUSA' ? 'Continuar' : 'Pausar') +
+                            ' <span class="vss-kbd">espaço</span>';
 
-  const rank = document.getElementById('rank');
-  rank.innerHTML = (state.scores || []).map((e) =>
-    `<li><span>${escapeHtml(e.name)}</span><span class="t">${fmt(e.time)}</span></li>`
-  ).join('') || '<li style="color:var(--muted)">vazio</li>';
-}
-
-function escapeHtml(t) {
-  const d = document.createElement('div');
-  d.textContent = t;
-  return d.innerHTML;
+  // Mesma guarda da TV. Aqui não há animação para quebrar, mas reconstruir a
+  // lista 30 vezes por segundo cancela qualquer seleção de texto do operador —
+  // que é justamente o que ele faz quando quer copiar um nome.
+  const rank = $('rank');
+  const rankSig = JSON.stringify(state.scores || []);
+  if (rank.dataset.sig !== rankSig) {
+    rank.dataset.sig = rankSig;
+    rank.innerHTML = (state.scores || []).map((e, i) =>
+      `<div class="vss-rank-row">
+         <span class="vss-rank-pos">${i + 1}</span>
+         <span class="vss-rank-name">${escapeHtml(e.name)}</span>
+         <span class="vss-rank-time">${fmt(e.time)}</span>
+       </div>`
+    ).join('') || '<div class="empty">vazio</div>';
+  }
 }
 
 function startMatch() {
-  const name = nameInput.value.trim();
-  send({ type: 'start', name });
+  send({ type: 'start', name: nameInput.value.trim() });
   nameInput.value = '';
   nameInput.blur();
 }
 
-document.getElementById('btnStart').onclick = startMatch;
-document.getElementById('btnAbort').onclick = () => send({ type: 'abort' });
-document.getElementById('btnPause').onclick = () => send({ type: 'pause' });
-document.getElementById('btnGoalPlayer').onclick = () => send({ type: 'goal', who: 'player' });
-document.getElementById('btnGoalAi').onclick = () => send({ type: 'goal', who: 'ai' });
+$('btnStart').onclick = startMatch;
+$('btnAbort').onclick = () => send({ type: 'abort' });
+$('btnPause').onclick = () => send({ type: 'pause' });
+$('btnGoalPlayer').onclick = () => send({ type: 'goal', who: 'player' });
+$('btnGoalAi').onclick = () => send({ type: 'goal', who: 'ai' });
 
-document.getElementById('btnClear').onclick = () => {
-  if (confirm('Apagar todos os tempos do ranking?')) send({ type: 'clear_scores' });
+// Apagar o ranking: dois toques, sem modal do navegador.
+$('btnClear').onclick = () => $('clearConfirm').classList.add('on');
+$('btnClearNo').onclick = () => $('clearConfirm').classList.remove('on');
+$('btnClearYes').onclick = () => {
+  send({ type: 'clear_scores' });
+  $('clearConfirm').classList.remove('on');
 };
 
 for (const b of document.querySelectorAll('[data-diff]')) {

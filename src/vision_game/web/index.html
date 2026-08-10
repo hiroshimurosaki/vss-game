@@ -2,118 +2,257 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Calibração da visão — VSS</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calibração da visão — Carrossel Caipira</title>
+<link rel="stylesheet" href="/vss.css">
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:#12141a; color:#e6e8ee;
-         font:14px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
-  header { padding:10px 16px; background:#1b1e26; border-bottom:1px solid #2b3040;
-           display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-  h1 { font-size:15px; margin:0; font-weight:600; }
-  main { display:flex; gap:16px; padding:16px; align-items:flex-start; flex-wrap:wrap; }
-  #view { max-width:100%; border:1px solid #2b3040; border-radius:6px; display:block; }
-  aside { flex:1; min-width:330px; max-width:470px; }
-  .card { background:#1b1e26; border:1px solid #2b3040; border-radius:6px;
-          padding:12px 14px; margin-bottom:12px; }
-  .card h2 { font-size:12px; margin:0 0 8px; text-transform:uppercase;
-             letter-spacing:.07em; color:#8f97ad; font-weight:600; }
-  .card.armed { border-color:#2f6df6; box-shadow:0 0 0 1px #2f6df6 inset; }
-  .row { display:flex; align-items:center; gap:8px; margin:6px 0; }
-  .row label { width:58px; font-size:12px; color:#8f97ad; }
-  .row input[type=range] { flex:1; }
-  .row output { width:44px; text-align:right; font-variant-numeric:tabular-nums;
-                font-size:12px; }
-  button { background:#2f6df6; color:#fff; border:0; border-radius:5px;
-           padding:7px 13px; font-size:13px; cursor:pointer; font-weight:500; }
-  button.ghost { background:#2b3040; }
-  button.on { background:#e0913a; }
-  button:hover { filter:brightness(1.15); }
-  select { background:#12141a; color:#e6e8ee; border:1px solid #2b3040;
-           border-radius:5px; padding:6px; }
-  .hint { color:#8f97ad; font-size:12px; margin:6px 0 0; }
-  code { background:#0e1015; padding:1px 5px; border-radius:3px; font-size:12px; }
-  #status { font-size:12px; color:#8f97ad; }
-  ol { margin:6px 0 0 18px; padding:0; font-size:12px; color:#8f97ad; }
-  ol li { margin:3px 0; }
-  table { width:100%; border-collapse:collapse; font-size:12px; }
-  td { padding:2px 0; }
-  td.k { color:#8f97ad; }
-  td.v { text-align:right; font-variant-numeric:tabular-nums; }
-  .ok { color:#4ec98a; } .bad { color:#e0614f; }
+  /* ═══ CALIBRAÇÃO DA VISÃO ═════════════════════════════════════════════════
+
+     Esta era a tela fora da marca: azul #2f6df6, cinzas próprios, escala de
+     texto própria. Agora usa o mesmo vss.css das outras três.
+
+     O que mudou de comportamento, não só de cor:
+
+     · O vídeo é o instrumento de medida — a conferência da calibração é
+       VISUAL (as linhas projetadas caindo sobre as pintadas). Então ele fica
+       grande e grudado no topo enquanto o painel rola ao lado.
+     · O estado "armado" agora aparece SOBRE o vídeo, não só como borda no
+       cartão. Armar, esquecer, e clicar achando que está só olhando é o erro
+       que joga fora a calibração — e a borda ficava fora do campo de visão de
+       quem está olhando para o campo.
+     · Os quatro passos são numerados de verdade e o passo 2 mostra progresso
+       (2/4 cantos), porque parar no meio é fácil.                            */
+
+  body { padding: 0; }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: var(--fs-lg); font-weight: 650; }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 440px;
+    gap: var(--sp-4);
+    padding: var(--sp-4);
+    align-items: start;
+  }
+  @media (max-width: 1100px) {
+    main { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  /* ── Vídeo ────────────────────────────────────────────────────────────── */
+
+  .viewport {
+    position: sticky;
+    top: 68px;
+  }
+  @media (max-width: 1100px) {
+    .viewport { position: static; }
+  }
+
+  #view {
+    width: 100%;
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-deep);
+
+    /* Se o stream travar ou não abrir, a imagem quebrada colapsa para uma
+       tira de 20 px e o painel inteiro sobe junto — parece que a página
+       quebrou, quando o que caiu foi a câmera. O piso mantém o lugar. */
+    min-height: 320px;
+  }
+
+  /* Aviso de "estou esperando seu clique". Fica sobre o vídeo, onde o olho
+     de quem vai clicar já está. */
+  .armed-hint {
+    position: absolute;
+    top: var(--sp-3);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    display: none;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-4);
+    border-radius: var(--r-full);
+    background: var(--surface-1);
+    border: 1px solid var(--ciano);
+    box-shadow: 0 0 24px var(--ciano-20), var(--shadow-2);
+    color: var(--ciano);
+    font-size: var(--fs-md);
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .armed-hint.on { display: flex; }
+
+  .stage { position: relative; }
+
+  /* ── Passos ───────────────────────────────────────────────────────────── */
+
+  aside .vss-card { margin-bottom: var(--sp-3); }
+
+  .step-title {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+  }
+  .step-n {
+    display: grid;
+    place-items: center;
+    width: 24px; height: 24px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--surface-3);
+    border: 1px solid var(--line);
+    font-size: var(--fs-xs);
+    font-weight: 750;
+    color: var(--text-dim);
+  }
+  .step-title h2 { margin: 0; }
+  .step-title .vss-spacer + * { flex: none; }
+
+  .vss-card.armed .step-n {
+    background: var(--ciano-20);
+    border-color: var(--ciano);
+    color: var(--ciano);
+  }
+
+  ol.steps {
+    margin: var(--sp-2) 0 0 var(--sp-5);
+    padding: 0;
+    font-size: var(--fs-sm);
+    color: var(--muted);
+  }
+  ol.steps li { margin: 3px 0; }
+
+  .row { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0 0; }
+  .row label { font-size: var(--fs-sm); color: var(--muted); }
+  .row .vss-select { flex: 1; }
+
+  .count-tag { font-size: var(--fs-sm); color: var(--muted); font-family: var(--mono); }
+  .count-tag.done { color: var(--ok); }
 </style>
 </head>
 <body>
+
 <header>
-  <h1>Calibração da visão</h1>
-  <span id="status">conectando…</span>
-  <span style="flex:1"></span>
-  <button id="save">Salvar calibração</button>
+  <h1 class="vss-brand">Calibração da visão</h1>
+  <span class="vss-badge" id="status">conectando…</span>
+  <span class="vss-spacer"></span>
+  <button class="vss-btn primary" id="save">Salvar calibração</button>
 </header>
 
 <main>
-  <div><img id="view" src="/stream.mjpg" alt="câmera"></div>
+  <div class="stage">
+    <div class="armed-hint" id="armedHint"><span class="vss-dot pulsing"></span> <span id="armedText"></span></div>
+    <div class="viewport">
+      <img id="view" src="/stream.mjpg" alt="câmera">
+    </div>
+  </div>
 
   <aside>
-    <div class="card">
-      <h2>1 · Posição da câmera</h2>
-      <p class="hint">Se a câmera mudou de lugar mas o campo e a luz são os
-      mesmos, não precisa clicar nada: isto alinha o quadro de agora com a foto
-      da última calibração e transporta os cantos.</p>
-      <div class="row"><button id="reloc">Reencontrar cantos</button></div>
-      <p class="hint">Só funciona depois que existir uma calibração salva.</p>
+
+    <!-- 1 ─────────────────────────────────────────────────────────────── -->
+    <div class="vss-card">
+      <div class="step-title">
+        <span class="step-n">1</span>
+        <h2>Posição da câmera</h2>
+      </div>
+      <p class="vss-hint" style="margin-top:0">
+        Se a câmera mudou de lugar mas o campo e a luz são os mesmos, não
+        precisa clicar nada: isto alinha o quadro de agora com a foto da última
+        calibração e transporta os cantos.
+      </p>
+      <div class="row"><button class="vss-btn" id="reloc">Reencontrar cantos</button></div>
+      <p class="vss-hint">Só funciona depois que existir uma calibração salva.</p>
     </div>
 
-    <div class="card" id="cornercard">
-      <h2>2 · Cantos, na mão</h2>
-      <p class="hint">Clique os 4 cantos do <b>retângulo de jogo</b>, no sentido
-      horário:</p>
-      <ol>
+    <!-- 2 ─────────────────────────────────────────────────────────────── -->
+    <div class="vss-card" id="cornercard">
+      <div class="step-title">
+        <span class="step-n">2</span>
+        <h2>Cantos, na mão</h2>
+        <span class="vss-spacer"></span>
+        <span class="count-tag" id="ncorners">—</span>
+      </div>
+      <p class="vss-hint" style="margin-top:0">
+        Clique os 4 cantos do <b>retângulo de jogo</b>, no sentido horário:
+      </p>
+      <ol class="steps">
         <li>gol esquerdo, lado de cima</li>
         <li>gol direito, lado de cima</li>
         <li>gol direito, lado de baixo</li>
         <li>gol esquerdo, lado de baixo</li>
       </ol>
-      <p class="hint">O campo tem os cantos chanfrados a 45°: mire na
-      <b>interseção virtual</b> das duas retas, não na ponta do chanfro.</p>
+      <p class="vss-hint">
+        O campo tem os cantos chanfrados a 45°: mire na <b>interseção
+        virtual</b> das duas retas, não na ponta do chanfro.
+      </p>
       <div class="row">
-        <button id="armCorners" class="ghost">Clicar cantos</button>
-        <span id="ncorners" class="hint">—</span>
+        <button class="vss-btn" id="armCorners">Clicar cantos</button>
       </div>
-      <p class="hint"><b>Conferência:</b> as linhas azuis são o campo teórico
-      projetado. Se a calibração estiver certa, elas caem <b>em cima</b> das
-      linhas pintadas — principalmente a do meio.</p>
+      <p class="vss-hint">
+        <b>Conferência:</b> as linhas azuis são o campo teórico projetado. Se a
+        calibração estiver certa, elas caem <b>em cima</b> das linhas
+        pintadas — principalmente a do meio.
+      </p>
     </div>
 
-    <div class="card" id="colorcard">
-      <h2>3 · Cores</h2>
-      <div class="row">
-        <label>alvo</label>
-        <select id="color"></select>
-        <button id="armPick" class="ghost">Clicar na cor</button>
+    <!-- 3 ─────────────────────────────────────────────────────────────── -->
+    <div class="vss-card" id="colorcard">
+      <div class="step-title">
+        <span class="step-n">3</span>
+        <h2>Cores</h2>
       </div>
-      <p class="hint">Escolha o alvo, aperte <b>Clicar na cor</b> e clique no
-      objeto no vídeo. A faixa HSV sai da amostra — não precisa adivinhar
-      slider. Os sliders abaixo ficam para ajuste fino.</p>
-      <div id="sliders"></div>
+      <div class="row" style="margin-top:0">
+        <label for="color">alvo</label>
+        <select id="color" class="vss-select"></select>
+        <button class="vss-btn" id="armPick">Clicar na cor</button>
+      </div>
+      <p class="vss-hint">
+        Escolha o alvo, aperte <b>Clicar na cor</b> e clique no objeto no
+        vídeo. A faixa HSV sai da amostra — não precisa adivinhar slider. Os
+        sliders abaixo ficam para ajuste fino.
+      </p>
+      <div id="sliders" style="margin-top:var(--sp-3)"></div>
     </div>
 
-    <div class="card">
-      <h2>4 · Câmera</h2>
-      <p class="hint">Exposição e ganho travados. Suba primeiro a exposição
-      (é luz de graça, limitada pelos 30 fps); só depois o ganho, que traz
-      ruído junto.</p>
-      <div id="cam"></div>
+    <!-- 4 ─────────────────────────────────────────────────────────────── -->
+    <div class="vss-card">
+      <div class="step-title">
+        <span class="step-n">4</span>
+        <h2>Câmera</h2>
+      </div>
+      <p class="vss-hint" style="margin-top:0">
+        Exposição e ganho travados. Suba primeiro a exposição (é luz de graça,
+        limitada pelos 30 fps); só depois o ganho, que traz ruído junto.
+      </p>
+      <div id="cam" style="margin-top:var(--sp-3)"></div>
     </div>
 
-    <div class="card">
+    <div class="vss-card">
       <h2>Diagnóstico</h2>
-      <table id="stats"><tr><td class="k">—</td></tr></table>
+      <table class="vss-table" id="stats"><tr><td>—</td><td></td></tr></table>
     </div>
+
   </aside>
 </main>
 
 <script>
+'use strict';
+
 const view = document.getElementById('view');
 const statusEl = document.getElementById('status');
 let ws, cfg = null, corners = [], current = null, mode = null;
@@ -125,29 +264,34 @@ const CAM = [['exposure_time_absolute',3,2047],['gain',0,255],
 
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen  = () => say('conectado');
-  ws.onclose = () => { say('desconectado — retentando'); setTimeout(connect, 1000); };
+  ws.onopen  = () => say('conectado', 'live');
+  ws.onclose = () => { say('desconectado — retentando', 'warn'); setTimeout(connect, 1000); };
   ws.onmessage = ev => {
     const m = JSON.parse(ev.data);
     if (m.type === 'config') { cfg = m.config; initAll(); }
-    else if (m.type === 'saved') say('salvo ✓ (calibração + foto de referência)');
+    else if (m.type === 'saved') say('salvo ✓ (calibração + foto de referência)', 'live');
     else if (m.type === 'note')  say(m.msg);
-    else if (m.type === 'error') say('erro: ' + m.msg);
+    else if (m.type === 'error') say('erro: ' + m.msg, 'danger');
     else if (m.type === 'stats') showStats(m.stats);
   };
 }
-function say(t) { statusEl.textContent = t; }
+
+function say(t, kind) {
+  statusEl.textContent = t;
+  statusEl.className = 'vss-badge' + (kind ? ' ' + kind : '');
+}
+
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
 function showStats(s) {
   const pct = (a) => s.frames ? (100*a/s.frames).toFixed(1) + '%' : '—';
   const cls = (a) => (s.frames && a/s.frames > 0.98) ? 'ok' : 'bad';
   document.getElementById('stats').innerHTML =
-    `<tr><td class="k">taxa</td><td class="v">${s.fps.toFixed(1)} fps</td></tr>
-     <tr><td class="k">bola vista</td>
-         <td class="v ${cls(s.frames-s.ball_miss)}">${pct(s.frames-s.ball_miss)}</td></tr>
-     <tr><td class="k">robô não visto</td><td class="v">${s.robot_miss}×</td></tr>
-     <tr><td class="k">frames</td><td class="v">${s.frames}</td></tr>`;
+    `<tr><td>taxa</td><td>${s.fps.toFixed(1)} fps</td></tr>
+     <tr><td>bola vista</td>
+         <td class="${cls(s.frames-s.ball_miss)}">${pct(s.frames-s.ball_miss)}</td></tr>
+     <tr><td>robô não visto</td><td>${s.robot_miss}×</td></tr>
+     <tr><td>frames</td><td>${s.frames}</td></tr>`;
 }
 
 function initAll() {
@@ -163,14 +307,21 @@ function initAll() {
   }
   buildSliders(); buildCam();
   corners = cfg.corners_px.map(p => [p[0], p[1]]);
-  document.getElementById('ncorners').textContent = `${corners.length}/4 marcados`;
+  showCornerCount();
+}
+
+function showCornerCount() {
+  const el = document.getElementById('ncorners');
+  el.textContent = `${corners.length}/4 marcados`;
+  el.classList.toggle('done', corners.length === 4);
 }
 
 function slider(box, key, lo, hi, val, oninput) {
   const row = document.createElement('div');
-  row.className = 'row';
-  row.innerHTML = `<label>${key.replace('_absolute','').replace('white_balance_','wb_')}</label>
-    <input type="range" min="${lo}" max="${hi}" value="${val}"><output>${val}</output>`;
+  row.className = 'vss-slider';
+  const name = key.replace('_absolute','').replace('white_balance_','wb_');
+  row.innerHTML = `<label for="sl-${key}">${name}</label>
+    <input id="sl-${key}" type="range" min="${lo}" max="${hi}" value="${val}"><output>${val}</output>`;
   const i = row.querySelector('input'), o = row.querySelector('output');
   i.oninput = () => { o.textContent = i.value; oninput(parseInt(i.value,10)); };
   box.appendChild(row);
@@ -206,27 +357,46 @@ view.addEventListener('click', ev => {
   } else if (mode === 'corners') {
     if (corners.length >= 4) corners = [];
     corners.push([px,py]);
-    document.getElementById('ncorners').textContent = `${corners.length}/4 marcados`;
+    showCornerCount();
     if (corners.length === 4) { send({type:'corners', corners}); setMode(null); }
   }
 });
 
+const ARMED_TEXT = {
+  pick:    'clique no objeto para amostrar a cor',
+  corners: 'clique os 4 cantos, no sentido horário',
+};
+
 function setMode(m) {
   mode = m;
-  document.getElementById('armPick').classList.toggle('on', m==='pick');
-  document.getElementById('armCorners').classList.toggle('on', m==='corners');
-  document.getElementById('colorcard').classList.toggle('armed', m==='pick');
-  document.getElementById('cornercard').classList.toggle('armed', m==='corners');
+  document.getElementById('armPick').classList.toggle('on', m === 'pick');
+  document.getElementById('armCorners').classList.toggle('on', m === 'corners');
+  document.getElementById('colorcard').classList.toggle('armed', m === 'pick');
+  document.getElementById('cornercard').classList.toggle('armed', m === 'corners');
+
+  // O aviso sobre o vídeo: quem vai clicar está olhando para o campo, não
+  // para o cartão do lado.
+  document.getElementById('armedHint').classList.toggle('on', !!m);
+  if (m) document.getElementById('armedText').textContent = ARMED_TEXT[m];
+
   view.style.cursor = m ? 'crosshair' : 'default';
 }
 
 document.getElementById('armPick').onclick =
   () => setMode(mode==='pick' ? null : 'pick');
+
 document.getElementById('armCorners').onclick =
-  () => { corners=[]; document.getElementById('ncorners').textContent='0/4 marcados';
+  () => { corners=[]; showCornerCount();
           setMode(mode==='corners' ? null : 'corners'); };
+
 document.getElementById('reloc').onclick = () => { send({type:'relocate'}); say('alinhando…'); };
 document.getElementById('save').onclick  = () => send({type:'save'});
+
+// Esc desarma. Sair de um modo armado sem ter que achar o botão de novo é o
+// que evita o clique perdido no vídeo.
+window.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && mode) setMode(null);
+});
 
 connect();
 setInterval(() => send({type:'stats'}), 1000);

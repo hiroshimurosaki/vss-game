@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluxo — Carrossel Caipira</title>
+<link rel="stylesheet" href="/vss.css">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Painel de fluxo — tela de staff.
+
+   Tema claro porque o ginásio é iluminado, dado fino em fundo escuro cansa, e
+   a diferença impede que alguém confunda esta tela com o telão de relance.
+
+   A regra que organiza a página: SUMÁRIO ANTES DO DETALHE. Quem abre isto está
+   de pé, com a fila esperando, e quer uma frase — onde a informação morreu. A
+   cadeia inteira existe para conferir a frase, não para ser lida antes dela.
+
+   Cor nunca é o único sinal: todo estado traz ícone e texto junto.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+body { min-height: 100vh; display: flex; flex-direction: column; }
+
+.topo {
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
+}
+.topo h1 { font-size: var(--fs-lg); font-weight: 600; }
+
+main {
+  flex: 1;
+  width: 100%; max-width: 1280px; margin: 0 auto;
+  padding: var(--sp-6);
+  display: grid; gap: var(--sp-6);
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+}
+@media (max-width: 980px) { main { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Veredito ──────────────────────────────────────────────────────────────
+   A única coisa da página que pode ser lida de longe. Faixa lateral grossa
+   porque é o elemento que precisa achar o olho antes de qualquer leitura. */
+
+.veredito {
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--muted);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  padding: var(--sp-5) var(--sp-6);
+  display: grid; gap: var(--sp-2);
+}
+.veredito.ok      { border-left-color: var(--ok); }
+.veredito.warn    { border-left-color: var(--warn); }
+.veredito.bad     { border-left-color: var(--danger); }
+.veredito.unknown { border-left-color: var(--line-strong); }
+
+.veredito .cabeca {
+  display: flex; align-items: center; gap: var(--sp-3);
+  font-size: var(--fs-xs); font-weight: 600;
+  letter-spacing: .10em; text-transform: uppercase; color: var(--muted);
+}
+.veredito .onde  { font-size: var(--fs-xl); font-weight: 600; }
+.veredito .texto { font-size: var(--fs-md); color: var(--text-dim); }
+.veredito .dica  { font-size: var(--fs-sm); color: var(--muted); max-width: 68ch; }
+.veredito.ok   .onde { color: var(--ok); }
+.veredito.warn .onde { color: var(--warn); }
+.veredito.bad  .onde { color: var(--danger); }
+
+/* ── Cadeia ─────────────────────────────────────────────────────────────── */
+
+.etapa {
+  display: flex; align-items: center; gap: var(--sp-3);
+  margin: var(--sp-6) 0 var(--sp-3);
+}
+.etapa:first-child { margin-top: 0; }
+.etapa .n {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-3); color: var(--text-dim);
+  font-size: var(--fs-xs); font-weight: 600; flex: none;
+}
+.etapa .rot {
+  font-size: var(--fs-xs); font-weight: 600;
+  letter-spacing: .10em; text-transform: uppercase; color: var(--muted);
+}
+.etapa hr { flex: 1; border: none; border-top: 1px solid var(--line); }
+
+.elo {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--muted);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+.elo.ok      { border-left-color: var(--ok); }
+.elo.warn    { border-left-color: var(--warn); }
+.elo.bad     { border-left-color: var(--danger); }
+.elo.unknown { border-left-color: var(--line-strong); }
+
+/* A linha "quem → o quê → quem". É a resposta à pergunta do painel, então é
+   a primeira linha de cada elo e a única em peso cheio. */
+.rota {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--sp-2); row-gap: var(--sp-1);
+}
+.rota .no {
+  font-family: var(--mono); font-size: var(--fs-sm); font-weight: 500;
+  color: var(--text);
+}
+/* Os quatro estados de um nó na rota. Surdo e ausente PRECISAM se distinguir:
+   surdo é defeito acionável, ausente é só o modo em que o stack subiu. Riscar
+   os dois igual foi o que fez a primeira versão marcar `radio_communication`
+   de vermelho para sempre no modo simulador. */
+.rota .no.ativo   { color: var(--text); }
+.rota .no.surdo   { color: var(--danger); text-decoration: line-through;
+                    text-decoration-thickness: 2px; }
+.rota .no.ausente { color: var(--muted); opacity: .65; }
+.rota .no.extra   { color: var(--warn); }
+.rota .sep { color: var(--muted); font-size: var(--fs-xs); }
+.rota .vss-i { color: var(--muted); font-size: 14px; }
+.rota .vss-spacer { min-width: var(--sp-4); }
+
+.elo .detalhe {
+  font-family: var(--mono); font-size: var(--fs-sm);
+  color: var(--text-dim); margin-top: var(--sp-2);
+  overflow-x: auto; white-space: nowrap;
+}
+.elo .dica {
+  font-size: var(--fs-sm); color: var(--muted);
+  margin-top: var(--sp-1); max-width: 78ch;
+}
+.elo.ok   .dica { color: var(--muted); }
+.elo.warn .dica { color: var(--warn); }
+.elo.bad  .dica { color: var(--danger); }
+
+.medidas {
+  display: flex; gap: var(--sp-4); flex-wrap: wrap;
+  margin-top: var(--sp-2);
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted);
+}
+.medidas b { color: var(--text-dim); font-weight: 500; }
+
+/* ── Coluna lateral ─────────────────────────────────────────────────────── */
+
+aside { display: grid; gap: var(--sp-4); position: sticky; top: var(--sp-4); }
+
+.nos { display: grid; gap: var(--sp-1); }
+.no-linha {
+  display: grid; grid-template-columns: 16px 1fr auto;
+  align-items: center; gap: var(--sp-2);
+  padding: var(--sp-1) 0;
+  font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--line-soft);
+}
+.no-linha:last-child { border-bottom: none; }
+.no-linha .qual { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
+.no-linha.ok      .vss-i { color: var(--ok); }
+.no-linha.bad     .vss-i { color: var(--danger); }
+.no-linha.unknown .vss-i { color: var(--muted); }
+
+.cego {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3);
+  font-size: var(--fs-sm); color: var(--muted);
+}
+.cego b { color: var(--text-dim); font-weight: 600; }
+</style>
+
+<div class="vss-band"></div>
+
+<header class="topo">
+  <span class="vss-brand" style="font-size:19px">Carrossel Caipira</span>
+  <h1>Fluxo</h1>
+  <span class="vss-spacer"></span>
+  <!-- O estado da partida fica no topo porque metade dos "silêncios" desta
+       tela só se interpretam sabendo dele. -->
+  <span class="vss-badge" id="estadoJogo">—</span>
+  <span class="vss-badge" id="uptime">—</span>
+  <span class="vss-badge live" id="conexao"><span class="vss-dot pulsing"></span> ao vivo</span>
+</header>
+
+<main>
+  <div>
+    <div class="veredito unknown" id="veredito" aria-live="polite">
+      <div class="cabeca"><span class="vss-i alvo"></span> Onde a informação morre</div>
+      <div class="onde" id="v_onde">esperando o primeiro estado…</div>
+      <div class="texto" id="v_texto"></div>
+      <div class="dica" id="v_dica"></div>
+    </div>
+
+    <div id="cadeia"></div>
+  </div>
+
+  <aside>
+    <div class="vss-card">
+      <h2>Nós</h2>
+      <div class="nos" id="nos"></div>
+    </div>
+
+    <div class="vss-card">
+      <h2>Onde este painel é cego</h2>
+      <p class="cego">
+        Do <b>/motorVelocities</b> para a frente é serial, rádio e motor, e
+        nenhum deles publica de volta. Com o jogo rodando quem tem a serial da
+        ponte é o <b>radio_communication</b>, e serial não se abre duas vezes.
+        <br><br>
+        Se a cadeia toda está verde e o robô não anda, pare tudo com
+        <span class="vss-code">./tools/stop.sh</span> e use
+        <span class="vss-code">./tools/debug_panel.py</span> na bancada — ele
+        ouve os dois lados do rádio.
+      </p>
+    </div>
+
+    <div class="vss-card">
+      <h2>Outros nós de pé</h2>
+      <div class="vss-hint" id="outros" style="margin-top:0">—</div>
+    </div>
+  </aside>
+</main>
+
+<div class="vss-conn" id="semConexao">
+  <span class="vss-i aviso"></span> Sem conexão com o painel
+</div>
+
+<script>
+const ROTULO_ETAPA = {
+  1: 'a fronteira do hardware',
+  2: 'a coleira da IA',
+  3: 'intenção: quem quer o quê',
+  4: 'agregação',
+  5: 'tradução para movimento',
+  6: 'último elo que o software vê',
+  7: 'telas e efeitos colaterais',
+};
+
+const ICONE = { ok: 'check', warn: 'aviso', bad: 'x', unknown: 'info' };
+
+const esc = (s) => String(s).replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function icone(status, extra = '') {
+  return `<span class="vss-i ${ICONE[status] || 'info'}" ${extra}></span>`;
+}
+
+function desenharElo(e) {
+  // "de" e "para": quem está de fato falando/ouvindo vem do ROS; quem era
+  // esperado e não apareceu sai riscado. É a diferença entre este painel e um
+  // grafo genérico — o ausente também é informação.
+  // Separador explícito entre nomes de nó: dois nomes colados por um espaço
+  // (`game_master ai_player`) leem como um nome só de dois pedaços, ainda mais
+  // em monoespaçada com underscore.
+  const sep = '<span class="sep">·</span>';
+
+  // O estado de cada nó vem julgado do nó ROS — ver `_rota` no flow_node.py.
+  // Aqui só se pinta. O título explica o estado no hover, para quem não
+  // decorou o que cada tratamento significa.
+  const TITULO = {
+    ativo:   n => `${n} está de pé e ativo neste tópico`,
+    surdo:   n => `${n} está de pé mas NÃO está neste tópico — é defeito`,
+    ausente: n => `${n} não está rodando`,
+    extra:   n => `${n} está neste tópico sem ser esperado pela topologia`,
+  };
+  const lado = (rota) => rota.length
+    ? rota.map(r => `<span class="no ${r.estado}" title="${esc(TITULO[r.estado](r.nome))}">${esc(r.nome)}</span>`).join(sep)
+    : '<span class="no ausente">ninguém</span>';
+
+  const de = lado(e.rota_de);
+  const para = lado(e.rota_para);
+
+  const medidas = [];
+  if (e.hz_nominal !== null) {
+    // "mín" e não "de ~": /game_data sai a 30 Hz da câmera e a 60 do
+    // simulador, e os dois estão certos. O número é piso, não alvo.
+    medidas.push(`<span><b>${e.hz.toFixed(1)}</b> Hz <span style="opacity:.6">mín ${e.hz_nominal}</span></span>`);
+  } else {
+    medidas.push('<span>a evento</span>');
+  }
+  if (e.idade !== null) medidas.push(`<span>último há <b>${e.idade.toFixed(2)}</b> s</span>`);
+  medidas.push(`<span><b>${e.total}</b> msg</span>`);
+  medidas.push(`<span>${esc(e.tipo)}</span>`);
+
+  return `
+    <div class="elo ${e.status}">
+      <div class="rota">
+        ${icone(e.status, `style="color:var(--${e.status === 'ok' ? 'ok' : e.status === 'warn' ? 'warn' : e.status === 'bad' ? 'danger' : 'muted'})"`)}
+        ${de}
+        <span class="vss-i seta"></span>
+        <span class="vss-topic ${e.status}">${esc(e.topico)}</span>
+        <span class="vss-i seta"></span>
+        ${para}
+      </div>
+      <div class="detalhe">${esc(e.detalhe)}</div>
+      ${e.dica ? `<div class="dica">${esc(e.dica)}</div>` : ''}
+      <div class="medidas">${medidas.join('')}</div>
+    </div>`;
+}
+
+function desenhar(s) {
+  const v = document.getElementById('veredito');
+  v.className = 'veredito ' + s.veredito.nivel;
+  document.getElementById('v_onde').textContent  = s.veredito.onde;
+  document.getElementById('v_texto').textContent = s.veredito.texto;
+  document.getElementById('v_dica').textContent  = s.veredito.dica || '';
+
+  let html = '';
+  let etapaAtual = null;
+  for (const e of s.elos) {
+    if (e.etapa !== etapaAtual) {
+      etapaAtual = e.etapa;
+      html += `<div class="etapa"><span class="n">${e.etapa}</span>
+               <span class="rot">${esc(ROTULO_ETAPA[e.etapa] || '')}</span><hr></div>`;
+    }
+    html += desenharElo(e);
+  }
+  document.getElementById('cadeia').innerHTML = html;
+
+  document.getElementById('nos').innerHTML = s.nos.map(n => `
+    <div class="no-linha ${n.status}">
+      ${icone(n.status)}
+      <span>${esc(n.rotulo)}</span>
+      <span class="qual">${esc(n.presentes.join(' + ') || n.esperados.join('/'))}</span>
+    </div>`).join('');
+
+  document.getElementById('outros').textContent = s.outros.join(', ') || 'nenhum';
+  document.getElementById('uptime').textContent = `painel de pé há ${s.uptime.toFixed(0)}s`;
+
+  const ej = document.getElementById('estadoJogo');
+  ej.textContent = s.estado_jogo;
+  ej.className = 'vss-badge' + (s.estado_jogo === 'JOGANDO' ? ' live' : '');
+}
+
+// Sondagem, não WebSocket: um painel de diagnóstico não pode ter, ele mesmo,
+// um canal que cai calado. Se o GET falhar, o aviso aparece e a próxima
+// tentativa se resolve sozinha — sem lógica de reconexão para dar errado.
+let falhas = 0;
+async function tique() {
+  try {
+    const r = await fetch('/estado', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    desenhar(await r.json());
+    falhas = 0;
+  } catch (err) {
+    falhas++;
+  }
+  const caiu = falhas >= 2;
+  document.getElementById('semConexao').classList.toggle('on', caiu);
+  document.getElementById('conexao').style.display = caiu ? 'none' : '';
+}
+
+tique();
+setInterval(tique, 500);
+</script>
+</html>

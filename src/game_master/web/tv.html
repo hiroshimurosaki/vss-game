@@ -3,47 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Carrossel Caipira — Desafie o Robô</title>
+<title>Carrossel Caipira — Desafie o Franky 2.2</title>
+<link rel="stylesheet" href="/vss.css">
 <style>
-  :root {
-    --menta:   #2EE6A8;
-    --ciano:   #3AC8E8;
-    --azul:    #4A7FE0;
-    --magenta: #A94BD6;
-    --laranja: #FF8C1A;
+  /* ═══ TELÃO ═══════════════════════════════════════════════════════════════
 
-    --bg:    #080b12;
-    --panel: rgba(255,255,255,.045);
-    --line:  rgba(255,255,255,.10);
-    --text:  #eef3f8;
-    --muted: #7d8899;
-  }
+     Um visitante decide em dois segundos, de dez metros, no meio do barulho,
+     se vale parar. Tudo aqui responde a isso:
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+     · O placar é DÍGITO, não bolinha. A versão anterior mostrava o placar só
+       como pips — a dez metros ninguém conta três círculos e sabe se é 2 ou 3.
+       Os pips ficaram, como reforço, embaixo do número.
+     · Dígito claro em poço preto é o maior contraste que uma TV entrega.
+     · Placar e cronômetro têm o mesmo peso: o ranking é por TEMPO, então
+       quem está ganhando e há quanto tempo são a mesma pergunta.
+     · Nada se move de lugar entre um estado e outro. O olho que achou o
+       cronômetro uma vez não precisa procurar de novo.
+     · Todo estado também está escrito, não só colorido.
+
+     A escala é toda `--fs-tv-*` do vss.css: a mesma página serve o monitor de
+     teste de 24" e o telão do ginásio.                                        */
 
   html, body { height: 100%; overflow: hidden; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    font-variant-numeric: tabular-nums;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* Brilho de fundo com as cores da logo. */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: -30%;
-    background:
-      radial-gradient(closest-side, rgba(46,230,168,.13), transparent) 18% 22%/55% 55% no-repeat,
-      radial-gradient(closest-side, rgba(169,75,214,.13), transparent) 82% 78%/55% 55% no-repeat,
-      radial-gradient(closest-side, rgba(58,200,232,.10), transparent) 62% 18%/45% 45% no-repeat;
-    pointer-events: none;
-    z-index: 0;
-  }
+  body { display: flex; flex-direction: column; }
 
   .screen {
     position: relative;
@@ -55,40 +37,20 @@
   }
   .screen.on { display: flex; }
 
-  /* ── Cabeçalho ─────────────────────────────────────────── */
+  /* ── Cabeçalho, igual em todas as telas ───────────────────────────────── */
 
-  header {
+  .top {
     display: flex;
     align-items: center;
     gap: 1.4vw;
     padding-bottom: 1.6vh;
     border-bottom: 1px solid var(--line);
+    flex: none;
   }
+  .top .vss-brand { font-size: var(--fs-tv-brand); }
+  .top .vss-badge { margin-left: auto; font-size: var(--fs-tv-label); color: var(--menta); }
 
-  .brand {
-    font-size: clamp(18px, 2.1vw, 34px);
-    font-weight: 750;
-    letter-spacing: -0.02em;
-    background: linear-gradient(100deg, var(--menta), var(--ciano) 38%, var(--azul) 68%, var(--magenta));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .tagline { color: var(--muted); font-size: clamp(12px, 1.05vw, 18px); }
-
-  .diff-badge {
-    margin-left: auto;
-    font-size: clamp(11px, .95vw, 16px);
-    font-weight: 650;
-    letter-spacing: .1em;
-    padding: .5vh 1.2vw;
-    border-radius: 999px;
-    border: 1px solid var(--line);
-    color: var(--menta);
-  }
-
-  /* ── Atração ───────────────────────────────────────────── */
+  /* ── Atração ──────────────────────────────────────────────────────────── */
 
   #idle .hero {
     flex: 1;
@@ -99,297 +61,400 @@
   }
 
   .call {
-    font-size: clamp(38px, 6.4vw, 118px);
-    font-weight: 800;
-    line-height: .96;
-    letter-spacing: -0.035em;
+    font-size: var(--fs-tv-call);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 1.02;
+    letter-spacing: 0;
   }
   .call em {
     font-style: normal;
     background: linear-gradient(100deg, var(--menta), var(--ciano) 45%, var(--magenta));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
   }
 
   .call-sub {
     margin-top: 2.4vh;
-    font-size: clamp(15px, 1.5vw, 26px);
+    font-size: var(--fs-tv-body);
     color: var(--muted);
     line-height: 1.5;
     max-width: 30ch;
   }
+
+  /* As três regras. Um visitante que não sabe o que está vendo não para —
+     e não dá para explicar de viva voz com fila. Três itens, uma linha cada. */
+  .rules {
+    display: flex;
+    gap: 2.2vw;
+    margin-top: 3vh;
+    flex-wrap: wrap;
+  }
+  .rule { display: flex; align-items: baseline; gap: .7vw; }
+  .rule b {
+    font-size: var(--fs-tv-name);
+    font-family: var(--display);
+    font-weight: 900;
+    letter-spacing: 0;
+    background: linear-gradient(100deg, var(--menta), var(--ciano));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .rule span { font-size: var(--fs-tv-label); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
 
   .pulse {
     margin-top: 3.2vh;
     display: inline-flex;
     align-items: center;
     gap: .8vw;
-    font-size: clamp(14px, 1.35vw, 23px);
-    font-weight: 620;
+    font-size: var(--fs-tv-body);
+    font-weight: 650;
     color: var(--menta);
   }
-  .pulse .dot {
-    width: .8em; height: .8em;
-    border-radius: 50%;
-    background: var(--menta);
-    animation: blink 1.5s ease-in-out infinite;
-  }
-  @keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.25;transform:scale(.8)} }
 
-  /* ── Ranking ───────────────────────────────────────────── */
+  /* ── Ranking ──────────────────────────────────────────────────────────── */
 
-  .ranking { background: var(--panel); border: 1px solid var(--line); border-radius: 1.2vw; padding: 2vh 1.6vw; }
-
-  .ranking h2 {
-    font-size: clamp(12px, 1.05vw, 18px);
-    font-weight: 700;
-    letter-spacing: .13em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 1.6vh;
-  }
-
-  .rank-row {
-    display: grid;
-    grid-template-columns: 2.2em 1fr auto;
-    align-items: baseline;
-    gap: .9vw;
+  .ranking { padding: 2vh 1.6vw; border-radius: 1.2vw; }
+  .ranking h2 { font-size: var(--fs-tv-label); margin-bottom: 1.6vh; }
+  .ranking .vss-rank-row {
+    font-size: var(--fs-tv-name);
     padding: .85vh 0;
-    border-bottom: 1px solid rgba(255,255,255,.05);
-    font-size: clamp(14px, 1.35vw, 24px);
-    animation: slideIn .4s backwards;
+    gap: .9vw;
+    animation: slide-in var(--dur-slow) backwards;
   }
-  .rank-row:last-child { border-bottom: none; }
-  @keyframes slideIn { from { opacity:0; transform: translateX(-14px) } }
+  @keyframes slide-in { from { opacity: 0; transform: translateX(-14px); } }
 
-  .rank-pos { font-weight: 750; color: var(--muted); }
-  .rank-row:nth-child(1) .rank-pos { color: var(--menta); }
-  .rank-row:nth-child(2) .rank-pos { color: var(--ciano); }
-  .rank-row:nth-child(3) .rank-pos { color: var(--azul); }
-
-  .rank-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rank-time { font-weight: 700; font-variant-numeric: tabular-nums; }
-
-  .rank-row.highlight {
-    background: linear-gradient(90deg, rgba(46,230,168,.16), transparent);
-    border-radius: .5vw;
-    padding-left: .7vw;
-    margin-left: -.7vw;
+  /* Vaga livre: o lugar existe e se lê, mas não disputa atenção com os
+     nomes que já estão lá. */
+  .ranking .vss-rank-row.vaga { opacity: .32; }
+  .ranking .vss-rank-row.vaga .vss-rank-name {
+    font-weight: 400;
+    font-style: italic;
+    color: var(--muted);
   }
 
-  .empty-rank { color: var(--muted); font-size: clamp(13px,1.2vw,20px); padding: 2vh 0; }
+  /* ── Partida ──────────────────────────────────────────────────────────── */
 
-  /* ── Partida ───────────────────────────────────────────── */
+  #playing .body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2.5vh;
+  }
 
-  #playing .body { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2vh; }
+  /* O PLACAR É UM OBJETO SÓ.
 
-  .scoreline {
+     A primeira versão eram três caixas arredondadas flutuando lado a lado, e
+     tinha três defeitos que a captura de tela mostrou de imediato: o
+     cronômetro vazava do poço, sobrava largura vazia em volta de um dígito
+     único, e o conjunto não lia como placar — lia como três cartões.
+
+     Placar de ginásio é uma peça só: uma moldura, divisórias internas, e os
+     números em janelas escuras. É o que este bloco faz. */
+
+  .board {
+    background: var(--bg-deep);
+    border: 1px solid var(--line-strong);
+    border-radius: 1.2vw;
+    box-shadow: var(--shadow-2);
     display: grid;
     grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    gap: 2.5vw;
+    grid-template-rows: auto auto;
+    overflow: hidden;
   }
 
-  .side { text-align: center; }
+  .cell { padding: 2.2vh 2vw 2.6vh; text-align: center; min-width: 0; }
+
+  /* Divisórias internas: é o que transforma três células numa peça só. */
+  .cell + .cell { border-left: 1px solid var(--line); }
+
+  .side-tag {
+    font-size: var(--fs-tv-label);
+    color: var(--muted);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
   .side-name {
-    font-size: clamp(16px, 2vw, 38px);
-    font-weight: 700;
-    letter-spacing: -.01em;
+    font-size: var(--fs-tv-name);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .01em;
+    line-height: 1.25;
+    margin-top: .2vh;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .side-tag { font-size: clamp(11px,.95vw,17px); color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: .8vh; }
-  .side.ai .side-name { color: var(--magenta); }
-  .side.player .side-name { color: var(--ciano); }
+  .cell.ia        .side-name { color: var(--ia); }
+  .cell.visitante .side-name { color: var(--visitante); }
 
-  .pips { display: flex; justify-content: center; gap: .7vw; margin-top: 1.4vh; }
-  .pip {
-    width: clamp(16px, 1.7vw, 30px);
-    height: clamp(16px, 1.7vw, 30px);
-    border-radius: 50%;
-    border: 2px solid var(--line);
-    transition: background .25s, transform .25s, box-shadow .25s;
-  }
-  .side.ai .pip.on { background: var(--magenta); border-color: var(--magenta); box-shadow: 0 0 1.5vw rgba(169,75,214,.55); transform: scale(1.12); }
-  .side.player .pip.on { background: var(--ciano); border-color: var(--ciano); box-shadow: 0 0 1.5vw rgba(58,200,232,.55); transform: scale(1.12); }
-
-  .clock {
-    font-size: clamp(56px, 11vw, 200px);
-    font-weight: 800;
-    letter-spacing: -.045em;
-    line-height: 1;
+  .score-digit {
+    font-size: var(--fs-tv-score);
+    font-family: var(--display);
+    font-weight: 900;
+    line-height: .9;
     font-variant-numeric: tabular-nums;
+    margin-top: 1vh;
+  }
+  .cell.ia        .score-digit { color: var(--ia); }
+  .cell.visitante .score-digit { color: var(--visitante); }
+
+  /* Pips: reforço do dígito, não substituto. Quantos faltam para fechar. */
+  .pips { display: flex; justify-content: center; gap: .6vw; margin-top: 1.4vh; }
+  .pip {
+    width: clamp(10px, 1.1vw, 20px);
+    height: clamp(10px, 1.1vw, 20px);
+    border-radius: 50%;
+    border: 2px solid var(--line-strong);
+    transition: background var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .cell.ia        .pip.on { background: var(--ia); border-color: var(--ia); transform: scale(1.15); }
+  .cell.visitante .pip.on { background: var(--visitante); border-color: var(--visitante); transform: scale(1.15); }
+
+  /* Célula do meio. O cronômetro tem seis glifos contra um do placar, então
+     vai numa escala MENOR para pesar o mesmo — a versão anterior usava o
+     mesmo tamanho e por isso transbordava a caixa. */
+  .cell.clock-col {
+    padding-left: 2.6vw;
+    padding-right: 2.6vw;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .clock-label {
+    font-size: var(--fs-tv-label);
+    color: var(--muted);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+  .clock {
+    font-size: clamp(40px, 7vw, 132px);
+    font-family: var(--display);
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: .9;
+    font-variant-numeric: tabular-nums;
+    margin-top: 1vh;
+    white-space: nowrap;
   }
   .clock.warn { color: var(--laranja); animation: tick 1s steps(2) infinite; }
-  @keyframes tick { 50% { opacity: .45 } }
-
-  .clock-label { text-align: center; font-size: clamp(11px,.95vw,17px); color: var(--muted); letter-spacing: .14em; text-transform: uppercase; }
+  @keyframes tick { 50% { opacity: .45; } }
 
   .timebar {
-    height: .8vh;
-    background: rgba(255,255,255,.07);
-    border-radius: 999px;
+    grid-column: 1 / -1;
+    height: .9vh;
+    background: rgba(255, 255, 255, .06);
+    border-top: 1px solid var(--line);
     overflow: hidden;
-    margin-top: 1vh;
   }
   .timebar span {
     display: block; height: 100%;
     background: linear-gradient(90deg, var(--menta), var(--ciano));
     transition: width .2s linear;
   }
-  .timebar.warn span { background: linear-gradient(90deg, var(--laranja), #ff4d4d); }
+  .timebar.warn span { background: linear-gradient(90deg, var(--laranja), #FF4D4D); }
 
-  /* ── Contagem ──────────────────────────────────────────── */
+  /* ── Contagem ─────────────────────────────────────────────────────────── */
 
-  .count {
-    flex: 1;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-  }
+  .count { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .count-num {
     font-size: clamp(120px, 26vw, 440px);
     font-weight: 800;
     line-height: 1;
-    letter-spacing: -.06em;
+    letter-spacing: 0;
+    font-family: var(--display);
     background: linear-gradient(160deg, var(--menta), var(--ciano) 50%, var(--magenta));
     -webkit-background-clip: text; background-clip: text; color: transparent;
-    animation: pop .55s ease-out;
+    animation: pop var(--dur-slow) var(--ease);
   }
-  @keyframes pop { from { transform: scale(.55); opacity: 0 } }
-  .count-name { font-size: clamp(20px,2.6vw,48px); font-weight: 700; margin-top: 1vh; }
+  @keyframes pop { from { transform: scale(.55); opacity: 0; } }
+  .count-name { font-size: var(--fs-tv-call); font-family: var(--display); font-weight: 900;
+                text-transform: uppercase; letter-spacing: .01em; line-height: 1.12; }
+  .count-hint { font-size: var(--fs-tv-body); color: var(--muted); margin-top: 1.5vh; }
 
-  /* ── Gol ───────────────────────────────────────────────── */
+  /* ── Gol ──────────────────────────────────────────────────────────────── */
 
   .goal-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .goal-word {
-    font-size: clamp(70px, 17vw, 300px);
-    font-weight: 850;
-    letter-spacing: -.05em;
-    line-height: .9;
-    animation: slam .5s cubic-bezier(.2,1.5,.4,1);
+    font-size: var(--fs-tv-huge);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    line-height: 1.0;
+    text-align: center;
+    animation: slam var(--dur-slow) var(--ease-pop);
   }
-  @keyframes slam { from { transform: scale(2.1); opacity: 0; filter: blur(14px) } }
-  .goal-who { font-size: clamp(20px,2.8vw,52px); font-weight: 700; margin-top: 1.5vh; color: var(--muted); }
+  @keyframes slam { from { transform: scale(2.1); opacity: 0; filter: blur(14px); } }
 
-  /* ── Resultado ─────────────────────────────────────────── */
+  /* Depois do gol o placar continua na tela. Quem chegou agora precisa saber
+     como está o jogo, não só que alguém marcou. */
+  .goal-score {
+    display: flex; align-items: baseline; gap: 1.5vw;
+    margin-top: 3vh;
+    font-size: var(--fs-tv-call);
+    font-family: var(--display);
+    font-weight: 900;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .goal-score .x { color: var(--muted); font-size: var(--fs-tv-name); }
+  .goal-score .ia { color: var(--ia); }
+  .goal-score .visitante { color: var(--visitante); }
+  .goal-who { font-size: var(--fs-tv-body); margin-top: 1.5vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; }
+
+  /* ── Resultado ────────────────────────────────────────────────────────── */
 
   .result { flex: 1; display: grid; grid-template-columns: 1fr .9fr; gap: 3vw; align-items: center; }
-  .result-title { font-size: clamp(40px,6.5vw,120px); font-weight: 820; line-height: .95; letter-spacing: -.035em; }
-  .result-time { font-size: clamp(46px,7.5vw,140px); font-weight: 800; letter-spacing: -.04em; margin-top: 1vh; }
-  .result-sub { font-size: clamp(15px,1.55vw,28px); color: var(--muted); margin-top: 1.5vh; }
+  .result-title { font-size: var(--fs-tv-call); font-family: var(--display); font-weight: 900;
+                  text-transform: uppercase; line-height: 1.02; letter-spacing: 0; }
+  .result-time {
+    font-size: clamp(46px, 7.5vw, 140px);
+    font-family: var(--display);
+    font-weight: 900; letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    margin-top: 1vh;
+  }
+  .result-sub { font-size: var(--fs-tv-body); color: var(--muted); margin-top: 1.5vh; }
 
-  .win  .result-title { background: linear-gradient(100deg, var(--menta), var(--ciano)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .win  .result-title { background: linear-gradient(100deg, var(--menta), var(--ciano));
+                        -webkit-background-clip: text; background-clip: text; color: transparent; }
   .lose .result-title { color: var(--magenta); }
 
   .medal {
     display: inline-block;
     margin-top: 2vh;
     padding: .9vh 1.8vw;
-    border-radius: 999px;
-    font-size: clamp(15px,1.6vw,30px);
+    border-radius: var(--r-full);
+    font-size: var(--fs-tv-name);
     font-weight: 750;
-    background: linear-gradient(100deg, rgba(46,230,168,.20), rgba(58,200,232,.20));
-    border: 1px solid rgba(46,230,168,.45);
+    background: linear-gradient(100deg, var(--menta-20), var(--ciano-20));
+    border: 1px solid var(--menta-45);
     color: var(--menta);
-    animation: pop .5s ease-out .2s backwards;
+    animation: pop var(--dur-slow) var(--ease) .2s backwards;
   }
+
+  /* ── Pausa ────────────────────────────────────────────────────────────── */
 
   .pause-veil {
-    position: fixed; inset: 0; z-index: 5;
-    background: rgba(8,11,18,.86);
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(11, 14, 21, .88);
+    backdrop-filter: blur(3px);
     display: none;
+    flex-direction: column;
     align-items: center; justify-content: center;
-    font-size: clamp(34px,5.5vw,100px); font-weight: 800; letter-spacing: -.03em;
+    gap: 2vh;
   }
   .pause-veil.on { display: flex; }
-
-  #conn {
-    position: fixed; right: 1vw; bottom: 1vh; z-index: 6;
-    font-size: 12px; color: #f0883e;
-    display: none;
-  }
-  #conn.on { display: block; }
+  .pause-veil b { font-size: var(--fs-tv-call); font-family: var(--display); font-weight: 900;
+                  text-transform: uppercase; letter-spacing: .01em; }
+  .pause-veil span { font-size: var(--fs-tv-body); color: var(--muted); }
 </style>
 </head>
-<body>
+<body class="vss-glow">
 
-<!-- ATRAÇÃO -->
+<!-- A assinatura: bandeirinha de quermesse nas cinco cores da logo.
+     Fica acima de todas as telas, então o telão diz "feira" antes de
+     alguém ler uma única palavra. -->
+<div class="vss-bunting"></div>
+
+<!-- ATRAÇÃO ─────────────────────────────────────────────────────────────── -->
 <div class="screen" id="idle">
-  <header>
-    <span class="brand">Carrossel Caipira</span>
-    <span class="tagline">futebol de robôs · UNESP</span>
-    <span class="diff-badge" id="idleDiff">MÉDIO</span>
-  </header>
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-tagline">futebol de robôs · UNESP</span>
+    <span class="vss-badge" id="idleDiff">MÉDIO</span>
+  </div>
+
   <div class="hero">
     <div>
-      <div class="call">Você contra<br><em>o robô</em>.</div>
+      <div class="call">Você contra<br><em>o Franky 2.2</em>.</div>
       <div class="call-sub">
         Pegue o controle e tente vencer a inteligência artificial.
-        Melhor de três — e o cronômetro está correndo.
       </div>
-      <div class="pulse"><span class="dot"></span> Chegue mais e jogue</div>
+
+      <div class="rules">
+        <div class="rule"><b>3</b><span>gols vencem</span></div>
+        <div class="rule"><b>2min</b><span>no relógio</span></div>
+        <div class="rule"><b>1</b><span>controle</span></div>
+      </div>
+
+      <div class="pulse"><span class="vss-dot pulsing"></span> Chegue mais e jogue</div>
     </div>
-    <div class="ranking">
+
+    <div class="vss-card glass ranking">
       <h2>Os dez mais rápidos</h2>
       <div id="idleRank"></div>
     </div>
   </div>
 </div>
 
-<!-- CONTAGEM -->
+<!-- CONTAGEM ────────────────────────────────────────────────────────────── -->
 <div class="screen" id="countdown">
-  <header>
-    <span class="brand">Carrossel Caipira</span>
-    <span class="diff-badge" id="cdDiff">MÉDIO</span>
-  </header>
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge" id="cdDiff">MÉDIO</span>
+  </div>
   <div class="count">
-    <div class="count-num" id="cdNum">3</div>
     <div class="count-name" id="cdName"></div>
+    <div class="count-num" id="cdNum">3</div>
+    <div class="count-hint">prepare o controle</div>
   </div>
 </div>
 
-<!-- JOGANDO -->
+<!-- JOGANDO ─────────────────────────────────────────────────────────────── -->
 <div class="screen" id="playing">
-  <header>
-    <span class="brand">Carrossel Caipira</span>
-    <span class="tagline">melhor de três</span>
-    <span class="diff-badge" id="playDiff">MÉDIO</span>
-  </header>
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-tagline">melhor de três</span>
+    <span class="vss-badge" id="playDiff">MÉDIO</span>
+  </div>
+
   <div class="body">
-    <div class="scoreline">
-      <div class="side ai">
+    <div class="board">
+      <div class="cell ia">
         <div class="side-tag">Inteligência artificial</div>
-        <div class="side-name">ROBÔ</div>
+        <div class="side-name">FRANKY 2.2</div>
+        <div class="score-digit" id="aiScore">0</div>
         <div class="pips" id="aiPips"></div>
       </div>
-      <div>
+
+      <div class="cell clock-col">
         <div class="clock-label">tempo</div>
         <div class="clock" id="clock">0:00.0</div>
       </div>
-      <div class="side player">
+
+      <div class="cell visitante">
         <div class="side-tag">Jogador</div>
         <div class="side-name" id="playerName">—</div>
+        <div class="score-digit" id="playerScore">0</div>
         <div class="pips" id="playerPips"></div>
       </div>
+      <div class="timebar" id="timebar"><span id="timefill"></span></div>
     </div>
-    <div class="timebar" id="timebar"><span id="timefill"></span></div>
   </div>
 </div>
 
-<!-- GOL -->
+<!-- GOL ─────────────────────────────────────────────────────────────────── -->
 <div class="screen" id="goal">
   <div class="goal-wrap">
     <div class="goal-word" id="goalWord">GOL!</div>
+    <div class="goal-score">
+      <span class="ia" id="goalAi">0</span>
+      <span class="x">×</span>
+      <span class="visitante" id="goalPlayer">0</span>
+    </div>
     <div class="goal-who" id="goalWho"></div>
   </div>
 </div>
 
-<!-- RESULTADO -->
+<!-- RESULTADO ───────────────────────────────────────────────────────────── -->
 <div class="screen" id="result">
-  <header>
-    <span class="brand">Carrossel Caipira</span>
-    <span class="diff-badge" id="resDiff">MÉDIO</span>
-  </header>
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge" id="resDiff">MÉDIO</span>
+  </div>
   <div class="result" id="resultBox">
     <div>
       <div class="result-title" id="resTitle">Você venceu!</div>
@@ -397,15 +462,23 @@
       <div class="result-sub" id="resSub"></div>
       <div id="resMedal"></div>
     </div>
-    <div class="ranking">
+    <div class="vss-card glass ranking">
       <h2>Os dez mais rápidos</h2>
       <div id="resRank"></div>
     </div>
   </div>
 </div>
 
-<div class="pause-veil" id="pauseVeil">PAUSADO</div>
-<div id="conn">sem conexão com o árbitro</div>
+<div class="pause-veil" id="pauseVeil">
+  <b>PAUSADO</b>
+  <span>o jogo volta já</span>
+</div>
+
+<div class="vss-conn" id="conn"><span class="vss-dot"></span> sem conexão com o árbitro</div>
+
+<!-- Estado corrente em texto, para leitor de tela. A TV é vista de longe,
+     mas a página também é aberta em monitor durante os testes. -->
+<div class="vss-sr" id="live" aria-live="polite"></div>
 
 <script>
 'use strict';
@@ -435,14 +508,23 @@ function fmt(seconds) {
 
 const DIFF_LABEL = { FACIL: 'FÁCIL', MEDIO: 'MÉDIO', DIFICIL: 'DIFÍCIL' };
 
+// O game_master já corta em 10; isto é o número de lugares DESENHADOS.
+const RANK_SLOTS = 10;
+
 function show(id) {
   for (const el of document.querySelectorAll('.screen')) {
     el.classList.toggle('on', el.id === id);
   }
 }
 
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Só redesenha quando muda: recriar os nós a 30 Hz mataria a animação.
 function pips(container, count, total) {
-  // Só redesenha quando muda: recriar os nós a 30 Hz mataria a animação.
   const want = `${count}/${total}`;
   if (container.dataset.sig === want) return;
   container.dataset.sig = want;
@@ -456,28 +538,54 @@ function pips(container, count, total) {
 }
 
 function ranking(container, scores, highlightName, highlightTime) {
-  if (!scores || !scores.length) {
-    container.innerHTML = '<div class="empty-rank">Ninguém venceu ainda. Seja o primeiro.</div>';
-    return;
-  }
+  // Só redesenha quando muda — mesma guarda do pips(), e pelo mesmo motivo,
+  // que aqui é ainda mais grave: as linhas entram com `animation-delay`
+  // escalonado e `fill-mode: backwards`, ou seja, ficam invisíveis ATÉ a
+  // animação começar. Reconstruindo o innerHTML a 30 Hz a animação reinicia a
+  // cada 33 ms, e uma linha com 45 ms de atraso nunca chega a aparecer:
+  // o ranking fica permanentemente invisível. Foi assim que ele ficou até
+  // agora — o bug não era visível porque some junto com a lista inteira.
+  const sig = JSON.stringify([scores, highlightName ?? null,
+                              highlightTime == null ? null : highlightTime.toFixed(2)]);
+  if (container.dataset.sig === sig) return;
+  container.dataset.sig = sig;
 
-  container.innerHTML = scores.map((entry, index) => {
+  // As dez posições existem SEMPRE, mesmo vazias. Três motivos:
+  //
+  //  1. O painel se chama "os dez mais rápidos". Mostrar três desmente o
+  //     próprio título.
+  //  2. A altura do cartão fica constante. Antes ele encolhia conforme os
+  //     tempos entravam, e o bloco inteiro dançava na tela a cada partida.
+  //  3. Vaga vazia é convite. Sete lugares abertos dizem ao visitante que
+  //     ainda dá para entrar na lista — que é exatamente o que faz ele pegar
+  //     o controle. Lista cheia de estranhos não convida ninguém.
+  const list = scores || [];
+  const rows = [];
+
+  for (let index = 0; index < RANK_SLOTS; index++) {
+    const entry = list[index];
+
+    if (!entry) {
+      rows.push(`<div class="vss-rank-row vaga" style="animation-delay:${index * 45}ms">
+        <span class="vss-rank-pos">${index + 1}</span>
+        <span class="vss-rank-name">livre</span>
+        <span class="vss-rank-time">—</span>
+      </div>`);
+      continue;
+    }
+
     const mine = highlightName
       && entry.name === highlightName
       && Math.abs(entry.time - highlightTime) < 0.05;
 
-    return `<div class="rank-row${mine ? ' highlight' : ''}" style="animation-delay:${index * 45}ms">
-      <span class="rank-pos">${index + 1}</span>
-      <span class="rank-name">${escapeHtml(entry.name)}</span>
-      <span class="rank-time">${fmt(entry.time)}</span>
-    </div>`;
-  }).join('');
-}
+    rows.push(`<div class="vss-rank-row${mine ? ' highlight' : ''}" style="animation-delay:${index * 45}ms">
+      <span class="vss-rank-pos">${index + 1}</span>
+      <span class="vss-rank-name">${escapeHtml(entry.name)}</span>
+      <span class="vss-rank-time">${fmt(entry.time)}</span>
+    </div>`);
+  }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  container.innerHTML = '<div class="vss-rank">' + rows.join('') + '</div>';
 }
 
 function render() {
@@ -496,6 +604,7 @@ function render() {
     case 'REGISTRO':
       show('idle');
       ranking(document.getElementById('idleRank'), state.scores);
+      announce('aguardando jogador');
       break;
 
     case 'CONTAGEM': {
@@ -509,7 +618,8 @@ function render() {
         void el.offsetWidth;
         el.style.animation = '';
       }
-      document.getElementById('cdName').textContent = state.player_name;
+      document.getElementById('cdName').textContent = state.player_name || '';
+      announce(`começando em ${n}`);
       break;
     }
 
@@ -523,10 +633,15 @@ function render() {
       show('goal');
       const player = state.last_scorer === 'JOGADOR';
       const word = document.getElementById('goalWord');
-      word.textContent = player ? 'GOL!' : 'O ROBÔ MARCOU';
-      word.style.color = player ? 'var(--ciano)' : 'var(--magenta)';
+      word.textContent = player ? 'GOL!' : 'FRANKY 2.2 MARCOU';
+      word.style.color = player ? 'var(--visitante)' : 'var(--ia)';
+
+      document.getElementById('goalAi').textContent = state.ai_score;
+      document.getElementById('goalPlayer').textContent = state.player_score;
       document.getElementById('goalWho').textContent =
-        player ? state.player_name : `${state.player_score} × ${state.ai_score}`;
+        player ? (state.player_name || 'jogador') : 'inteligência artificial';
+
+      announce(`gol — ${state.ai_score} a ${state.player_score}`);
       break;
     }
 
@@ -540,6 +655,9 @@ function render() {
 function renderPlaying() {
   document.getElementById('playerName').textContent = state.player_name || '—';
   document.getElementById('clock').textContent = fmt(state.elapsed);
+
+  document.getElementById('aiScore').textContent = state.ai_score;
+  document.getElementById('playerScore').textContent = state.player_score;
 
   pips(document.getElementById('aiPips'), state.ai_score, state.target_score);
   pips(document.getElementById('playerPips'), state.player_score, state.target_score);
@@ -559,7 +677,7 @@ function renderResult() {
   box.classList.toggle('lose', !state.player_won);
 
   document.getElementById('resTitle').textContent =
-    state.player_won ? 'Você venceu!' : 'O robô levou essa';
+    state.player_won ? 'Você venceu!' : 'O Franky 2.2 levou essa';
 
   document.getElementById('resTime').textContent = fmt(state.elapsed);
 
@@ -567,13 +685,30 @@ function renderResult() {
     ? `${state.player_name} · ${state.player_score} × ${state.ai_score}`
     : `${state.player_name} · ${state.player_score} × ${state.ai_score} — tente de novo!`;
 
+  // A medalha também entra animada e também era reconstruída a 30 Hz — mesma
+  // armadilha do ranking, mesmo desfecho: nunca aparecia.
   const medal = document.getElementById('resMedal');
-  medal.innerHTML = state.rank_position
-    ? `<span class="medal">${state.rank_position}º lugar no ranking</span>`
-    : '';
+  const medalSig = String(state.rank_position || '');
+  if (medal.dataset.sig !== medalSig) {
+    medal.dataset.sig = medalSig;
+    medal.innerHTML = state.rank_position
+      ? `<span class="medal">${state.rank_position}º lugar no ranking</span>`
+      : '';
+  }
 
   ranking(document.getElementById('resRank'), state.scores,
           state.player_name, state.elapsed);
+
+  announce(state.player_won ? 'vitória do jogador' : 'vitória do Franky 2.2');
+}
+
+// Anuncia só quando o texto muda — a 30 Hz, repetir a mesma frase faz o
+// leitor de tela falar sem parar.
+let lastAnnounced = '';
+function announce(text) {
+  if (text === lastAnnounced) return;
+  lastAnnounced = text;
+  document.getElementById('live').textContent = text;
 }
 
 connect();

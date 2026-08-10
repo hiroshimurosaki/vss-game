@@ -11,7 +11,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Ligável por -DDEBUG_TX=1 na compilação, sem editar o arquivo. Com isso a ponte
+// confirma pela serial cada pacote que ela repassou ao rádio, que é o que separa
+// "a ponte não recebeu" de "a ponte recebeu e mandou".
+#ifndef DEBUG_TX
 #define DEBUG_TX 0
+#endif
 
 RF24 radio(6, 10);
 const byte address[6] = "00001";

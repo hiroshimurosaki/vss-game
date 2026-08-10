@@ -4,39 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Simulador VSS — Carrossel Caipira</title>
+<link rel="stylesheet" href="/vss.css">
 <style>
-  :root {
-    --menta:   #2EE6A8;
-    --ciano:   #3AC8E8;
-    --azul:    #4A7FE0;
-    --magenta: #A94BD6;
+  /* ═══ SIMULADOR ═══════════════════════════════════════════════════════════
 
-    --bg:      #0d1117;
-    --panel:   #161b22;
-    --line:    #262d38;
-    --text:    #e6edf3;
-    --muted:   #8b949e;
-  }
+     Ferramenta de desenvolvimento, não vitrine: aqui densidade de informação
+     é recurso, não poluição. O que mudou em relação à versão anterior:
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+     · O canvas agora é NÍTIDO em tela HiDPI. Antes tinha 900×780 fixos
+       esticados por CSS, o que borra tudo em monitor de retina; agora o
+       buffer acompanha o `devicePixelRatio`.
+     · As cores do canvas saem das variáveis do vss.css, não de um objeto de
+       hex duplicado. Mudou a marca, mudou o desenho junto.
+     · O campo e o painel dividem a tela numa grade que colapsa em coluna
+       única abaixo de 900 px.                                                */
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    min-height: 100vh;
-    padding: 20px;
-  }
+  body { padding: var(--sp-5); }
 
   .wrap {
     max-width: 1180px;
     margin: 0 auto;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 20px;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: var(--sp-5);
     align-items: start;
   }
-
   @media (max-width: 900px) {
     .wrap { grid-template-columns: minmax(0, 1fr); }
   }
@@ -45,139 +37,79 @@
     grid-column: 1 / -1;
     display: flex;
     align-items: baseline;
-    gap: 14px;
+    gap: var(--sp-3);
     flex-wrap: wrap;
-    padding-bottom: 14px;
+    padding-bottom: var(--sp-3);
     border-bottom: 1px solid var(--line);
   }
-
-  h1 {
-    font-size: 19px;
-    font-weight: 650;
-    letter-spacing: -0.01em;
-    background: linear-gradient(100deg, var(--menta), var(--ciano) 40%, var(--azul) 70%, var(--magenta));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .sub { color: var(--muted); font-size: 12.5px; }
-
-  #status {
-    margin-left: auto;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    padding: 3px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--line);
-    white-space: nowrap;
-  }
-  #status.on  { color: var(--menta);  border-color: color-mix(in srgb, var(--menta) 40%, transparent); }
-  #status.off { color: #f0883e; border-color: #5a3a1e; }
+  h1 { font-size: var(--fs-xl); }
+  header .vss-tagline { font-size: var(--fs-sm); }
+  #status { margin-left: auto; }
 
   .stage { min-width: 0; }
 
   canvas {
     width: 100%;
-    height: auto;
     display: block;
-    border-radius: 10px;
+    aspect-ratio: 900 / 780;
+    border-radius: var(--r-md);
     border: 1px solid var(--line);
-    background: #0a2818;
+    background: var(--grama);
     touch-action: none;
     cursor: crosshair;
   }
+
+  /* ── Placar do simulador ──────────────────────────────────────────────── */
 
   .scorebar {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 18px;
-    margin-bottom: 12px;
-    font-variant-numeric: tabular-nums;
+    gap: var(--sp-4);
+    margin-bottom: var(--sp-3);
   }
+  .score-side { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-dim); }
+  .score-side .chip { width: 10px; height: 10px; border-radius: 3px; }
+  .score-num { font-size: var(--fs-2xl); font-family: var(--display); font-weight: 900;
+               letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+  #scoreLeft  { color: var(--ia); }
+  #scoreRight { color: var(--visitante); }
+  .score-sep { color: var(--muted); font-size: var(--fs-xl); }
 
-  .score-side { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-  .score-side .dot { width: 10px; height: 10px; border-radius: 3px; }
-  .score-num { font-size: 30px; font-weight: 680; letter-spacing: -0.02em; }
-  .score-sep { color: var(--muted); font-size: 20px; }
+  /* ── Painel lateral ───────────────────────────────────────────────────── */
 
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 14px;
-    margin-bottom: 14px;
+  aside .vss-card { margin-bottom: var(--sp-3); }
+
+  .keys {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--sp-2) var(--sp-3);
+    align-items: center;
+    font-size: var(--fs-sm);
   }
-
-  .panel h2 {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    margin-bottom: 10px;
-  }
-
-  .btns { display: flex; flex-wrap: wrap; gap: 7px; }
-
-  button {
-    flex: 1 1 auto;
-    background: #21262d;
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 7px 11px;
-    font: inherit;
-    font-size: 12.5px;
-    cursor: pointer;
-    transition: background .12s, border-color .12s;
-  }
-  button:hover { background: #2d333b; border-color: #3d444d; }
-  button:active { transform: translateY(1px); }
-
-  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  td { padding: 3px 0; font-size: 12.5px; }
-  td:first-child { color: var(--muted); }
-  td:last-child { text-align: right; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-
-  .robot-tag {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 12px; font-weight: 600; margin-bottom: 6px;
-  }
-  .robot-tag .dot { width: 9px; height: 9px; border-radius: 2px; }
-
-  kbd {
-    display: inline-block;
-    min-width: 21px;
-    padding: 2px 5px;
-    background: #21262d;
-    border: 1px solid var(--line);
-    border-bottom-width: 2px;
-    border-radius: 4px;
-    font: 11px ui-monospace, Menlo, monospace;
-    text-align: center;
-  }
-
-  .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; font-size: 12.5px; }
   .keys span:last-child { color: var(--muted); }
 
-  .hint { color: var(--muted); font-size: 11.5px; margin-top: 9px; line-height: 1.45; }
+  .robot-tag {
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    font-size: var(--fs-sm); font-weight: 650;
+    margin-bottom: var(--sp-2);
+  }
+  .robot-tag .chip { width: 9px; height: 9px; border-radius: 2px; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <h1>Simulador VSS</h1>
-    <span class="sub">Carrossel Caipira &middot; feira de profissões</span>
-    <span id="status" class="off">conectando…</span>
+    <h1 class="vss-brand">Simulador VSS</h1>
+    <span class="vss-tagline">Carrossel Caipira &middot; feira de profissões</span>
+    <span id="status" class="vss-badge">conectando…</span>
   </header>
 
   <div class="stage">
     <div class="scorebar">
       <div class="score-side">
-        <span class="dot" style="background:var(--magenta)"></span>
+        <span class="chip" style="background:var(--ia)"></span>
         <span>IA</span>
       </div>
       <span class="score-num" id="scoreLeft">0</span>
@@ -185,69 +117,70 @@
       <span class="score-num" id="scoreRight">0</span>
       <div class="score-side">
         <span>Jogador</span>
-        <span class="dot" style="background:var(--ciano)"></span>
+        <span class="chip" style="background:var(--visitante)"></span>
       </div>
     </div>
     <canvas id="field" width="900" height="780"></canvas>
   </div>
 
   <aside>
-    <div class="panel">
+    <div class="vss-card">
       <h2>Controles</h2>
-      <div class="btns">
-        <button id="btnPause">Pausar</button>
-        <button id="btnReset">Recolocar</button>
-        <button id="btnResetScore">Zerar placar</button>
+      <div class="vss-btns">
+        <button class="vss-btn sm" id="btnPause">Pausar</button>
+        <button class="vss-btn sm" id="btnReset">Recolocar</button>
+        <button class="vss-btn sm" id="btnResetScore">Zerar placar</button>
       </div>
-      <p class="hint">
+      <p class="vss-hint">
         Arraste a bola ou os robôs com o mouse.
         Arraste a bola e <strong>solte com velocidade</strong> para dar um chute.
       </p>
     </div>
 
-    <div class="panel">
+    <div class="vss-card">
       <h2>Teclado — robô 1</h2>
       <div class="keys">
-        <span><kbd>W</kbd> <kbd>S</kbd></span><span>acelerar / ré</span>
-        <span><kbd>A</kbd> <kbd>D</kbd></span><span>girar</span>
-        <span><kbd>E</kbd> <kbd>Q</kbd></span><span>giro no lugar</span>
-        <span><kbd>B</kbd></span><span>boost</span>
+        <span><span class="vss-kbd">W</span> <span class="vss-kbd">S</span></span><span>acelerar / ré</span>
+        <span><span class="vss-kbd">A</span> <span class="vss-kbd">D</span></span><span>girar</span>
+        <span><span class="vss-kbd">E</span> <span class="vss-kbd">Q</span></span><span>giro no lugar</span>
+        <span><span class="vss-kbd">B</span></span><span>boost</span>
       </div>
-      <p class="hint">
-        As teclas viram um <code>sensor_msgs/Joy</code> em <code>/joy_0</code> e
-        descem por todo o pipeline real — <em>joy_aggregator</em>, <em>direction</em>,
-        <em>cinematica</em>. O que você testa aqui é o mesmo código que vai para o robô.
+      <p class="vss-hint">
+        As teclas viram um <code class="vss-code">sensor_msgs/Joy</code> em
+        <code class="vss-code">/joy_0</code> e descem por todo o pipeline real —
+        <em>joy_aggregator</em>, <em>direction</em>, <em>cinematica</em>. O que
+        você testa aqui é o mesmo código que vai para o robô.
       </p>
     </div>
 
-    <div class="panel">
+    <div class="vss-card">
       <h2>Cérebro da IA</h2>
-      <div class="btns" style="margin-bottom:10px">
-        <button data-diff="FACIL">Fácil</button>
-        <button data-diff="MEDIO">Médio</button>
-        <button data-diff="DIFICIL">Difícil</button>
+      <div class="vss-btns" style="margin-bottom:var(--sp-3)">
+        <button class="vss-btn sm" data-diff="FACIL">Fácil</button>
+        <button class="vss-btn sm" data-diff="MEDIO">Médio</button>
+        <button class="vss-btn sm" data-diff="DIFICIL">Difícil</button>
       </div>
-      <table id="telAi"></table>
-      <p class="hint">
+      <table class="vss-table" id="telAi"></table>
+      <p class="vss-hint">
         A cruz no campo é o alvo que ela escolheu; o círculo tracejado é
         <strong>onde ela acha que a bola está</strong>. Com atraso de reação, ele
         fica visivelmente atrás da bola de verdade.
       </p>
     </div>
 
-    <div class="panel">
-      <div class="robot-tag"><span class="dot" style="background:var(--magenta)"></span>Robô 0 — IA</div>
-      <table id="tel0"></table>
+    <div class="vss-card">
+      <div class="robot-tag"><span class="chip" style="background:var(--ia)"></span>Robô 0 — Franky 2.2 (IA)</div>
+      <table class="vss-table" id="tel0"></table>
     </div>
 
-    <div class="panel">
-      <div class="robot-tag"><span class="dot" style="background:var(--ciano)"></span>Robô 1 — jogador</div>
-      <table id="tel1"></table>
+    <div class="vss-card">
+      <div class="robot-tag"><span class="chip" style="background:var(--visitante)"></span>Robô 1 — jogador</div>
+      <table class="vss-table" id="tel1"></table>
     </div>
 
-    <div class="panel">
+    <div class="vss-card">
       <h2>Bola</h2>
-      <table id="telBall"></table>
+      <table class="vss-table" id="telBall"></table>
     </div>
   </aside>
 
@@ -260,16 +193,53 @@ const canvas = document.getElementById('field');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 
+// As cores do desenho saem do vss.css. Duplicar hex aqui foi o que deixou o
+// simulador e a TV divergirem antes. O fallback cobre o caso de a folha de
+// estilo não ter carregado — sem ele o campo inteiro sairia preto.
+const css = getComputedStyle(document.documentElement);
+const brand = (name, fallback) =>
+  css.getPropertyValue(`--${name}`).trim() || fallback;
+
 const COLORS = {
-  menta: '#2EE6A8', ciano: '#3AC8E8', azul: '#4A7FE0', magenta: '#A94BD6',
-  ball: '#FF8C1A', line: 'rgba(255,255,255,.30)', grass: '#0a2818',
+  menta:   brand('menta',   '#2EE6A8'),
+  ciano:   brand('ciano',   '#3AC8E8'),
+  azul:    brand('azul',    '#4A7FE0'),
+  magenta: brand('magenta', '#A94BD6'),
+  ball:    brand('laranja', '#FF8C1A'),
+  line:    brand('grama-line', 'rgba(255,255,255,.30)'),
+  grass:   brand('grama',   '#0A2818'),
 };
 
-const ROBOT_COLORS = { 0: '#A94BD6', 1: '#3AC8E8' };
+// Robô 0 é a IA e defende a esquerda; robô 1 é o visitante. Convenção do
+// projeto inteiro — ver CLAUDE.md.
+const ROBOT_COLORS = { 0: COLORS.magenta, 1: COLORS.ciano };
 
 let state = null;
 let ws = null;
 const pressed = new Set();
+
+// ── Nitidez em tela HiDPI ────────────────────────────────────────────────
+// O buffer do canvas acompanha o tamanho real em pixels do dispositivo.
+// `metrics()` e `pointerWorld()` já trabalham em pixels de buffer, então
+// nada mais precisa saber que isto existe.
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(rect.width * dpr);
+  const h = Math.round(rect.height * dpr);
+
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+    if (state) render();
+  }
+}
+
+new ResizeObserver(resizeCanvas).observe(canvas);
+window.addEventListener('resize', resizeCanvas);
 
 // ── WebSocket ────────────────────────────────────────────────────────────
 
@@ -278,12 +248,12 @@ function connect() {
 
   ws.onopen = () => {
     statusEl.textContent = 'conectado';
-    statusEl.className = 'on';
+    statusEl.className = 'vss-badge live';
   };
 
   ws.onclose = () => {
     statusEl.textContent = 'desconectado — tentando…';
-    statusEl.className = 'off';
+    statusEl.className = 'vss-badge warn';
     setTimeout(connect, 1000);
   };
 
@@ -304,7 +274,9 @@ function send(payload) {
 
 function metrics() {
   const f = state.field;
-  const margin = 28;
+  // A margem acompanha o tamanho do buffer, senão ela encolhe visualmente
+  // quando o canvas cresce em tela HiDPI.
+  const margin = canvas.width * 0.031;
   const scale = Math.min(
     (canvas.width - 2 * margin) / f.length,
     (canvas.height - 2 * margin) / f.width
@@ -322,12 +294,19 @@ function toWorld(px, py) {
   return [(px - m.cx) / m.scale, (m.cy - py) / m.scale];
 }
 
+// Espessura de traço e tamanho de fonte em unidades de buffer, para o desenho
+// não afinar quando o canvas é grande.
+function unit() {
+  return Math.max(1, canvas.width / 900);
+}
+
 // ── Desenho ──────────────────────────────────────────────────────────────
 
 function render() {
   if (!state) return;
 
   const { scale, f } = metrics();
+  const u = unit();
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -341,7 +320,7 @@ function render() {
 
   // Linhas
   ctx.strokeStyle = COLORS.line;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2 * u;
   ctx.strokeRect(x0, y0, w, h);
 
   ctx.beginPath();
@@ -371,14 +350,15 @@ function drawAiIntent() {
   const robot = state.robots.find((r) => r.id === 0);
   if (!robot) return;
 
+  const u = unit();
   const [rx, ry] = toScreen(robot.x, robot.y);
   const [tx, ty] = toScreen(ai.target_x, ai.target_y);
 
   // Linha do robô até o alvo escolhido.
   ctx.save();
   ctx.strokeStyle = 'rgba(169,75,214,.55)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 5]);
+  ctx.lineWidth = 2 * u;
+  ctx.setLineDash([6 * u, 5 * u]);
   ctx.beginPath();
   ctx.moveTo(rx, ry);
   ctx.lineTo(tx, ty);
@@ -387,10 +367,10 @@ function drawAiIntent() {
 
   // Cruz no alvo.
   ctx.strokeStyle = COLORS.magenta;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2 * u;
   ctx.beginPath();
-  ctx.moveTo(tx - 7, ty); ctx.lineTo(tx + 7, ty);
-  ctx.moveTo(tx, ty - 7); ctx.lineTo(tx, ty + 7);
+  ctx.moveTo(tx - 7 * u, ty); ctx.lineTo(tx + 7 * u, ty);
+  ctx.moveTo(tx, ty - 7 * u); ctx.lineTo(tx, ty + 7 * u);
   ctx.stroke();
 
   // Onde a IA acha que a bola está. Com atraso de reação ligado, isto fica
@@ -399,21 +379,22 @@ function drawAiIntent() {
   if (ai.ball_x !== 0 || ai.ball_y !== 0) {
     const [bx, by] = toScreen(ai.ball_x, ai.ball_y);
     ctx.strokeStyle = 'rgba(255,140,26,.5)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 1.5 * u;
+    ctx.setLineDash([3 * u, 3 * u]);
     ctx.beginPath();
-    ctx.arc(bx, by, 9, 0, Math.PI * 2);
+    ctx.arc(bx, by, 9 * u, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
   }
 
   ctx.fillStyle = COLORS.magenta;
-  ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
+  ctx.font = `600 ${12 * u}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.fillText(ai.state, rx, ry + state.field.robot_radius * 2 * metrics().scale);
 }
 
 function drawGoals(f, scale) {
+  const u = unit();
   const gh = f.goal_width * scale;
   const gd = 0.10 * scale;
 
@@ -423,7 +404,7 @@ function drawGoals(f, scale) {
   // Gol da esquerda é o que a IA defende; o da direita, o jogador.
   ctx.fillStyle = 'rgba(169,75,214,.16)';
   ctx.strokeStyle = COLORS.magenta;
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 2.5 * u;
   ctx.fillRect(lx - gd, ly, gd, gh);
   ctx.strokeRect(lx - gd, ly, gd, gh);
 
@@ -435,9 +416,10 @@ function drawGoals(f, scale) {
 
 function drawBall() {
   const { scale } = metrics();
+  const u = unit();
   const b = state.ball;
   const [bx, by] = toScreen(b.x, b.y);
-  const r = Math.max(5, state.field.ball_radius * scale);
+  const r = Math.max(5 * u, state.field.ball_radius * scale);
 
   // Rastro da velocidade
   const speed = Math.hypot(b.vx, b.vy);
@@ -463,6 +445,7 @@ function drawBall() {
 
 function drawRobot(robot) {
   const { scale } = metrics();
+  const u = unit();
   const [rx, ry] = toScreen(robot.x, robot.y);
   const size = state.field.robot_radius * 2 * scale;
   const color = ROBOT_COLORS[robot.id] || COLORS.menta;
@@ -473,7 +456,7 @@ function drawRobot(robot) {
 
   ctx.fillStyle = color;
   ctx.strokeStyle = 'rgba(255,255,255,.75)';
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.5 * u;
   roundRect(-size / 2, -size / 2, size, size, size * 0.16);
   ctx.fill();
   ctx.stroke();
@@ -493,7 +476,7 @@ function drawRobot(robot) {
   drawWheelBar(rx, ry, robot, scale, size);
 
   ctx.fillStyle = 'rgba(255,255,255,.9)';
-  ctx.font = '600 13px ui-monospace, Menlo, monospace';
+  ctx.font = `600 ${13 * u}px ui-monospace, Menlo, monospace`;
   ctx.textAlign = 'center';
   ctx.fillText(robot.id, rx, ry - size * 0.85);
 }
@@ -562,6 +545,12 @@ function updateTelemetry() {
       row('velocidade máx', `${(ai.speed_frac * 100).toFixed(0)}%`) +
       row('atraso', `${(ai.reaction_delay * 1000).toFixed(0)} ms`) +
       row('erro de visão', `${(lag * 100).toFixed(1)} cm`);
+
+    // Marca qual botão de dificuldade está valendo — antes os três ficavam
+    // iguais e não dava para saber onde a IA estava.
+    for (const button of document.querySelectorAll('[data-diff]')) {
+      button.classList.toggle('on', button.dataset.diff === ai.difficulty);
+    }
   } else {
     aiEl.innerHTML = row('estado', 'IA não está rodando');
   }
@@ -668,6 +657,7 @@ for (const button of document.querySelectorAll('[data-diff]')) {
   button.onclick = () => send({ type: 'difficulty', value: button.dataset.diff });
 }
 
+resizeCanvas();
 connect();
 </script>
 </body>

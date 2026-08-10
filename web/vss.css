@@ -1,0 +1,1073 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   vss.css — identidade visual do Carrossel Caipira
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Fonte única da aparência de todas as telas do projeto. O arquivo de verdade
+   é `web/vss.css` na raiz do repositório; o que existe dentro de cada pacote é
+   um symlink para cá, e o `glob('web/*')` do setup.py leva junto na instalação.
+
+   ── De onde vem esta aparência ─────────────────────────────────────────────
+
+   Do manual da marca da equipe, não de invenção nossa. A revisão de design do
+   site fixou três coisas que este arquivo obedece:
+
+     · Poppins no lugar da Bowlby One, "para trazer mais seriedade".
+     · Sem sombreado nos elementos.
+     · A faixa de degradê roxo → marinho → esmeralda é a assinatura.
+
+   A versão anterior deste arquivo tinha inventado outra história — bandeirinha
+   de quermesse e letra de letreiro de circo — que era coerente sozinha e
+   contradizia a decisão que o manual já havia tomado. O telão não parecia o
+   site da equipe. Agora parece.
+
+   O manual é antigo e quem o escreveu não está mais na equipe: ele vale como
+   decisão registrada, não como autoridade viva. Divergir dele é uma escolha
+   legítima — só precisa ser escolha, e não descuido.
+
+   As cores da logo continuam as mesmas: elas já estavam certas.
+
+   ── Dois temas, um sistema ─────────────────────────────────────────────────
+
+   O padrão é ESCURO: é o palco, a TV que o visitante vê de dez metros.
+
+     <html data-theme="light">   ferramenta de staff
+     <div  data-theme="dark">    recorte de palco dentro de uma ferramenta
+
+   Os dois valem em QUALQUER elemento, não só na raiz: é o que permite ao
+   operador ter uma prévia do telão na própria tela sem abrir outra aba, e ao
+   espécime mostrar os dois lados na mesma página.
+
+   Claro é o tema do operador, do simulador, da calibração, do rádio e do
+   painel de fluxo. Existe por três motivos: o ginásio é iluminado e dado fino
+   em fundo escuro cansa; a separação visual impede o operador de confundir sua
+   tela com o telão de relance; e cor sobre branco carrega significado melhor,
+   que é o que uma tela de diagnóstico precisa.
+
+   Só as SUPERFÍCIES e o TEXTO viram. As cores da marca não viram nunca — são a
+   identidade, e um verde que muda de tom entre telas deixa de ser um código.
+
+   ── Como usar ──────────────────────────────────────────────────────────────
+
+     <link rel="stylesheet" href="/vss.css">
+
+   e depois `class="vss-card"`, `class="vss-btn primary"`, e por aí.
+
+   Telas de ferramenta usam a escala em px. A TV usa a escala fluida
+   (`--fs-tv-*`), que cresce com a viewport porque a distância de leitura é de
+   dez metros no meio do barulho de um ginásio.
+
+   ── Canvas ─────────────────────────────────────────────────────────────────
+
+   Quem desenha em canvas não enxerga CSS. Para não duplicar hex no JS:
+
+     const brand = (name) => getComputedStyle(document.documentElement)
+                               .getPropertyValue(`--${name}`).trim();
+
+   ══════════════════════════════════════════════════════════════════════════ */
+
+
+/* ═══ Tipografia ════════════════════════════════════════════════════════════
+
+   Três letras, três papéis, nenhuma sobreposição.
+
+   ADVENT PRO é a letra do wordmark do manual, e entra aqui como fonte
+   VARIÁVEL: um arquivo de 49 KB cobre do wordmark (largura normal) ao placar
+   do telão (`font-stretch: 175%`) e à etiqueta estreita. É o que dá ao placar
+   uma letra que é da marca em vez de uma condensada genérica qualquer.
+
+   POPPINS é o corpo e os títulos, por decisão do manual.
+
+   FIRA MONO fica na telemetria. Sobreviveu à troca porque monoespaçada ali é
+   requisito funcional, não gosto: coluna de número atualizando a 30 Hz não
+   pode mudar de largura a cada dígito.
+
+   `font-display: block` na display de propósito: a TV pode esperar 200 ms pela
+   fonte certa, mas NÃO pode mostrar o placar numa fonte e trocar depois — na
+   tela grande o salto de largura é visível do fundo do ginásio.
+
+   Caminhos RELATIVOS ao .css de propósito: resolvem igual servidos em
+   `/vss.css` e abertos em `file://` — é o que faz `web/estilo.html` funcionar
+   com dois cliques, sem subir nó nenhum.                                    */
+
+@font-face {
+  font-family: 'Advent Pro VSS';
+  /* `format('woff2')` e não `format('woff2-variations')`: o segundo é de um
+     rascunho antigo da especificação, e navegador que não o reconhece descarta
+     a fonte INTEIRA em silêncio — cai na Arial sem um erro sequer. O woff2
+     simples serve variável em todo navegador que suporta variável; quem faz o
+     arquivo ser tratado como variável são os intervalos abaixo. */
+  src: url('fonts/display.woff2') format('woff2');
+  font-weight: 100 900;
+  font-stretch: 100% 200%;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Poppins VSS';
+  src: url('fonts/sans-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins VSS';
+  src: url('fonts/sans-semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins VSS';
+  src: url('fonts/sans-bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins VSS';
+  src: url('fonts/sans-black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  /* `block` e não `swap`: este é o peso do placar, e o telão não pode mostrar
+     o número numa fonte e trocar depois — do fundo do ginásio o salto de
+     largura é visível. */
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Fira Mono VSS';
+  src: url('fonts/mono-medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+/* ═══ Tokens ════════════════════════════════════════════════════════════════ */
+
+/* ── O que NÃO vira com o tema ────────────────────────────────────────────
+   Marca, tipografia, espaço, forma e ritmo. Um verde que muda de tom entre a
+   TV e o operador deixa de ser um código — vira decoração. */
+
+:root {
+
+  /* ── Marca ───────────────────────────────────────────────────────────────
+     As cores da logo e do manual. Cada uma tem papel fixo no jogo — trocar o
+     papel confunde quem já aprendeu a tela. Não viram com o tema. */
+
+  --roxo:       #8B3FD1;   /* extremidade esquerda do degradê da marca       */
+  --magenta:    #C049D6;   /* a IA (robô 0, gol da esquerda)                 */
+  --azul:       #4A7FE0;   /* apoio, terceiro lugar, dados neutros           */
+  --ciano:      #3AC8E8;   /* o VISITANTE humano (robô 1, gol da direita)    */
+  --menta:      #2EE6A8;   /* sucesso, jogador vencendo, primeiro lugar      */
+  --esmeralda:  #12A98A;   /* extremidade direita do degradê da marca        */
+  --marinho:    #0E1E4F;   /* o meio do degradê, e o chão do tema escuro     */
+  --laranja:    #FF8C1A;   /* a bola, e todo aviso de atenção                */
+
+  /* A assinatura. É a mesma faixa do site da equipe, na mesma ordem, em todas
+     as telas — é o que faz TV, operador, simulador e calibração parecerem o
+     mesmo produto. Definida uma vez porque escrever o degradê à mão em cada
+     lugar é como as ordens divergem. */
+  --gradiente: linear-gradient(90deg,
+                var(--roxo) 0%, var(--marinho) 50%, var(--esmeralda) 100%);
+
+  /* O mesmo degradê passando pelas cores vivas da logo. Para texto e para
+     traço fino, onde o marinho do meio sumiria no fundo escuro. */
+  --gradiente-vivo: linear-gradient(100deg,
+                     var(--roxo), var(--azul) 34%, var(--ciano) 62%, var(--menta));
+
+  /* O campo. Fica junto da marca porque aparece desenhado no simulador e é tão
+     identidade do produto quanto o resto — quem vê a tela reconhece o verde
+     antes de ler qualquer coisa. */
+  --grama:      #0A2818;
+  --grama-line: rgba(255, 255, 255, .30);
+
+  /* ── Tipografia ──────────────────────────────────────────────────────────
+     `--display` é onde mora a personalidade. Usada com restrição — placar,
+     cronômetro, chamada, marca. Espalhar isso por rótulo e texto corrido
+     mataria justamente o efeito. */
+
+  --display: 'Advent Pro VSS', 'Advent Pro', ui-sans-serif, system-ui, sans-serif;
+  --font:    'Poppins VSS', Poppins, ui-sans-serif, system-ui, -apple-system,
+             'Segoe UI', Roboto, Arial, sans-serif;
+  --mono:    'Fira Mono VSS', 'Fira Mono', ui-monospace, 'SF Mono', Menlo,
+             Consolas, monospace;
+
+  /* Larguras da Advent Pro. Nomeadas porque `font-stretch: 175%` solto no
+     código não diz a ninguém que aquilo é "a largura do placar". */
+  --wd-normal: 100%;
+  --wd-wide:   140%;   /* etiqueta de marca, título de seção do telão */
+  --wd-placar: 175%;   /* placar e cronômetro: ocupa a largura da tela */
+
+  /* Escala de ferramenta, em px: passos de ~1.2. */
+  --fs-xs:  11px;
+  --fs-sm:  12.5px;
+  --fs-md:  14px;
+  --fs-lg:  17px;
+  --fs-xl:  21px;
+  --fs-2xl: 27px;
+
+  /* Escala da TV, fluida. O `clamp` é o que faz a mesma página servir para o
+     monitor de teste de 24" e para o telão do ginásio sem duas folhas de
+     estilo. Os pisos existem para a tela não virar ilegível em janela pequena
+     durante o desenvolvimento. */
+  --fs-tv-label: clamp(11px,  0.95vw, 18px);   /* etiqueta, tagline        */
+  --fs-tv-body:  clamp(15px,  1.50vw, 28px);   /* texto corrido            */
+  --fs-tv-name:  clamp(16px,  2.00vw, 40px);   /* nome de jogador          */
+  --fs-tv-brand: clamp(18px,  2.10vw, 34px);   /* assinatura no cabeçalho  */
+  --fs-tv-call:  clamp(38px,  6.40vw, 118px);  /* chamada da atração       */
+  --fs-tv-score: clamp(56px, 11.00vw, 200px);  /* cronômetro, placar       */
+  --fs-tv-huge:  clamp(70px, 17.00vw, 300px);  /* GOL!, contagem           */
+
+  /* ── Espaço ──────────────────────────────────────────────────────────────
+     Grade de 4 px. Todo padding e todo gap sai daqui; foi a falta disto que
+     deixou as telas com 6px, 7px, 9px, 11px, 13px e 15px convivendo. */
+
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+
+  /* ── Forma ───────────────────────────────────────────────────────────── */
+
+  --r-sm:   6px;
+  --r-md:   10px;
+  --r-lg:   16px;
+  --r-full: 999px;
+
+  /* ── Ritmo ───────────────────────────────────────────────────────────────
+     Três durações e uma curva. A curva sai rápido e freia — parece resposta,
+     não animação. */
+
+  --dur-fast: 120ms;
+  --dur:      220ms;
+  --dur-slow: 450ms;
+  --ease:     cubic-bezier(.2, .8, .2, 1);
+  --ease-pop: cubic-bezier(.2, 1.5, .4, 1);
+}
+
+
+/* ── Superfícies: tema ESCURO (palco) ──────────────────────────────────────
+   Uma escala só de elevação, do fundo da página ao elemento mais alto. O chão
+   é o marinho do manual escurecido até virar fundo — o mesmo azul da barra de
+   navegação do site, não um cinza neutro qualquer.
+
+   Vale em `:root` (padrão de toda página) E em `[data-theme="dark"]` (recorte
+   de palco dentro de uma ferramenta clara). Os dois na mesma regra de
+   propósito: uma cópia dessas cores em outro seletor é uma cópia que alguém
+   vai esquecer de atualizar.                                               */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg:        #08132E;   /* fundo de todas as páginas do palco            */
+  --bg-deep:   #040A1C;   /* poço de dígito: o mais escuro que temos       */
+  --surface-1: #0F1F42;   /* cartão                                        */
+  --surface-2: #16294F;   /* botão em repouso, campo de texto              */
+  --surface-3: #1E355F;   /* botão sob o mouse                             */
+
+  --line:        rgba(255, 255, 255, .10);
+  --line-soft:   rgba(255, 255, 255, .05);
+  --line-strong: rgba(255, 255, 255, .18);
+
+  /* Vidro: cartão sobre o brilho de fundo da TV, onde um sólido mataria o
+     degradê que passa por trás. */
+  --glass: rgba(255, 255, 255, .045);
+
+  --text:     #EEF2FA;
+  --text-dim: #A8B4CE;
+  --muted:    #7A88A8;
+
+  /* Papéis semânticos. Use estes, não a cor crua, quando o sentido for
+     "deu certo" / "cuidado" / "deu errado". Viram com o tema porque sobre
+     branco as mesmas cores não passam em texto pequeno. */
+  --ok:     var(--menta);
+  --warn:   var(--laranja);
+  --danger: #F2685C;
+
+  /* Identidade dos dois lados do campo. A convenção do projeto inteiro é
+     robô 0 = IA = esquerda, robô 1 = visitante = direita (ver CLAUDE.md).
+     Estes dois tokens são a tradução dela em cor. */
+  --ia:        var(--magenta);
+  --visitante: var(--ciano);
+
+  /* Versões translúcidas, para preenchimento e brilho. Existem como token
+     porque `rgba(46,230,168,.16)` espalhado pelo código é impossível de manter
+     em sincronia com a cor sólida. */
+  --menta-12:   rgba( 46, 230, 168, .12);
+  --menta-20:   rgba( 46, 230, 168, .20);
+  --menta-45:   rgba( 46, 230, 168, .45);
+  --ciano-12:   rgba( 58, 200, 232, .12);
+  --ciano-20:   rgba( 58, 200, 232, .20);
+  --ciano-45:   rgba( 58, 200, 232, .45);
+  --azul-20:    rgba( 74, 127, 224, .20);
+  --magenta-12: rgba(192,  73, 214, .12);
+  --magenta-20: rgba(192,  73, 214, .20);
+  --magenta-45: rgba(192,  73, 214, .45);
+  --roxo-20:    rgba(139,  63, 209, .20);
+  --laranja-20: rgba(255, 140,  26, .20);
+  --laranja-45: rgba(255, 140,  26, .45);
+  --danger-45:  rgba(242, 104,  92, .45);
+  --danger-12:  rgba(242, 104,  92, .12);
+
+  /* "Tirar os sombreados dos elementos" é literal do manual. Sobrou UMA
+     sombra, e só para o que flutua de verdade sobre o resto: o aviso de
+     conexão. Cartão e botão se separam por borda e por superfície. */
+  --shadow-float: 0 8px 28px rgba(4, 10, 28, .45);
+
+  /* Anel de foco. Existe como token porque é acessibilidade, e acessibilidade
+     que cada arquivo redefine é acessibilidade que alguém esquece. O operador
+     trabalha com fila esperando e navega no teclado. */
+  --focus: 0 0 0 3px var(--ciano-45);
+
+  /* Tinta do wordmark e fundo do campo de texto. São TOKEN e não regra com
+     seletor de tema porque um `[data-theme="light"] .vss-brand` pegaria também
+     o wordmark dentro de um recorte de palco escuro — o seletor descendente
+     atravessa a troca de tema, o token não. */
+  --brand-paint: var(--gradiente-vivo);
+  --input-bg:    var(--bg);
+}
+
+
+/* ── Superfícies: tema CLARO (ferramenta de staff) ─────────────────────────
+   Só superfície e texto mudam. O branco não é branco puro e o preto não é
+   preto: o chão puxa para o marinho da marca e o texto é o marinho escuro, o
+   mesmo do título do site. Cinza neutro aqui faria a ferramenta parecer de
+   outro produto.
+
+   As linhas são marinho translúcido, não cinza — sobre branco, cinza suja e
+   marinho a 12% lê como "borda clara" sem virar poeira.                    */
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:        #F3F6FB;
+  --bg-deep:   #E7ECF6;   /* poço: aqui é mais claro que o fundo, não mais  */
+  --surface-1: #FFFFFF;
+  --surface-2: #EDF1F8;
+  --surface-3: #E1E8F4;
+
+  --line:        rgba(14, 30, 79, .14);
+  --line-soft:   rgba(14, 30, 79, .07);
+  --line-strong: rgba(14, 30, 79, .26);
+
+  --glass: rgba(255, 255, 255, .70);
+
+  --text:     #0E1E4F;
+  --text-dim: #43537D;
+  --muted:    #6C7A9C;
+
+  --shadow-float: 0 8px 28px rgba(14, 30, 79, .14);
+
+  /* Sobre branco, as cores vivas da logo perdem contraste de texto. Estas são
+     as mesmas cores rebaixadas até passarem em texto pequeno — o papel não
+     muda, só a luminosidade. Sem isto o "ok" verde-menta some no branco. */
+  --ok:     #0A8F63;
+  --warn:   #B25E00;
+  --danger: #C13B2E;
+
+  --ia:        #9B2FB0;
+  --visitante: #0E7FA0;
+
+  --danger-45: rgba(193, 59, 46, .45);
+  --danger-12: rgba(193, 59, 46, .10);
+  --menta-12:  rgba( 10, 143,  99, .10);
+  --menta-20:  rgba( 10, 143,  99, .18);
+  --menta-45:  rgba( 10, 143,  99, .45);
+  --ciano-12:  rgba( 14, 127, 160, .10);
+  --ciano-20:  rgba( 14, 127, 160, .18);
+  --ciano-45:  rgba( 14, 127, 160, .45);
+  --magenta-12: rgba(155,  47, 176, .10);
+  --magenta-20: rgba(155,  47, 176, .18);
+  --magenta-45: rgba(155,  47, 176, .45);
+  --laranja-20: rgba(178,  94,   0, .16);
+  --laranja-45: rgba(178,  94,   0, .45);
+
+  --focus: 0 0 0 3px rgba(14, 127, 160, .45);
+
+  /* Sobre branco o degradê vivo perde contraste: o wordmark vira marinho
+     sólido e a cor fica só na faixa, que é onde ela funciona. Continua
+     recortado no texto — pintar com uma cor chapada dá o mesmo resultado. */
+  --brand-paint: var(--text);
+  --input-bg:    var(--surface-1);
+}
+
+
+/* ═══ Base ══════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+
+  /* Número que não dança de largura ao mudar de dígito. Vale para a página
+     inteira: cronômetro, ranking, telemetria e slider são todos numéricos. */
+  font-variant-numeric: tabular-nums;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* O foco só aparece para quem navega no teclado — `:focus-visible`, não
+   `:focus`. Clicar num botão não deve acender anel. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: var(--r-sm);
+}
+
+/* Quem pediu menos movimento recebe menos movimento. A TV depende de animação
+   para chamar atenção, mas nada aqui é essencial para entender o estado —
+   todo estado também está escrito. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ═══ Ícones ════════════════════════════════════════════════════════════════
+
+   Símbolo aqui é SVG, nunca caractere. Medido: nem a Advent Pro nem a Poppins
+   têm seta, check, aviso ou bolinha — escrever `→` no HTML faz o navegador
+   cair numa fonte do sistema, e num computador de feira que ninguém auditou
+   isso é retângulo vazio na tela grande. Ver web/fonts/README.md.
+
+   Implementados como MÁSCARA, não como imagem de fundo: a máscara é pintada
+   com `currentColor`, então o ícone herda a cor do texto ao lado e acompanha
+   sozinho o estado (ok, aviso, erro) e o tema. Uma imagem colorida precisaria
+   de uma cópia por cor.
+
+   Tamanho em `em`: o ícone cresce com a fonte do contexto. O mesmo `.vss-i` do
+   rótulo de 11 px serve a chamada de 118 px do telão.                       */
+
+.vss-i {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  vertical-align: -.125em;
+  background-color: currentColor;
+  -webkit-mask: center / contain no-repeat;
+          mask: center / contain no-repeat;
+  -webkit-mask-image: var(--i);
+          mask-image: var(--i);
+}
+
+.vss-i.lg { width: 1.4em; height: 1.4em; vertical-align: -.28em; }
+
+/* Traço de 2px num viewBox de 24: fica nítido de 12 px a 200 px. */
+.vss-i.seta      { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12h15M13 6l6 6-6 6'/%3E%3C/svg%3E"); }
+.vss-i.seta-baixo{ --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v15M6 13l6 6 6-6'/%3E%3C/svg%3E"); }
+.vss-i.check     { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5.2 5.2L20 6.5'/%3E%3C/svg%3E"); }
+.vss-i.x         { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E"); }
+.vss-i.aviso     { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.2 22 20H2z'/%3E%3Cpath d='M12 10v4.2'/%3E%3Ccircle cx='12' cy='17.2' r='.9' fill='%23000' stroke='none'/%3E%3C/svg%3E"); }
+.vss-i.info      { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v6'/%3E%3Ccircle cx='12' cy='7.6' r='1.1' fill='%23000' stroke='none'/%3E%3C/svg%3E"); }
+.vss-i.alvo      { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='8.4'/%3E%3Ccircle cx='12' cy='12' r='3.2'/%3E%3Cpath d='M12 .8v4M12 19.2v4M.8 12h4M19.2 12h4' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.vss-i.play      { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4.5 20 12 7 19.5Z' fill='%23000'/%3E%3C/svg%3E"); }
+.vss-i.pause     { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z' fill='%23000'/%3E%3C/svg%3E"); }
+.vss-i.voltar    { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 12a8.5 8.5 0 1 0 2.6-6.1'/%3E%3Cpath d='M3 3.4v4.6h4.6'/%3E%3C/svg%3E"); }
+.vss-i.chevron   { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E"); }
+.vss-i.radio     { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='2.2' fill='%23000' stroke='none'/%3E%3Cpath d='M7.6 7.6a6.2 6.2 0 0 0 0 8.8M16.4 16.4a6.2 6.2 0 0 0 0-8.8M4.4 4.4a10.7 10.7 0 0 0 0 15.2M19.6 19.6a10.7 10.7 0 0 0 0-15.2'/%3E%3C/svg%3E"); }
+.vss-i.camera    { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M3 8.5h3.6L8.4 6h7.2l1.8 2.5H21v11H3z'/%3E%3Ccircle cx='12' cy='13.8' r='3.4'/%3E%3C/svg%3E"); }
+.vss-i.chip      { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6.5' y='6.5' width='11' height='11' rx='1.6'/%3E%3Cpath d='M10 3v3.5M14 3v3.5M10 17.5V21M14 17.5V21M3 10h3.5M3 14h3.5M17.5 10H21M17.5 14H21'/%3E%3C/svg%3E"); }
+.vss-i.controle  { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='7' width='20' height='10' rx='5'/%3E%3Cpath d='M6.4 10.2v3.6M4.6 12h3.6'/%3E%3Ccircle cx='16.4' cy='11' r='1.1' fill='%23000' stroke='none'/%3E%3Ccircle cx='18.6' cy='13.4' r='1.1' fill='%23000' stroke='none'/%3E%3C/svg%3E"); }
+
+
+/* ═══ Marca ═════════════════════════════════════════════════════════════════
+
+   A FAIXA é a assinatura, e é o único elemento decorativo do sistema inteiro.
+   Vem direto do site da equipe — o degradê roxo → marinho → esmeralda que a
+   designer marcou em verde no material de revisão ("Gosto muito desses
+   gradientes de cor!"). Um elemento, e o resto da tela fica quieto: é aqui que
+   a ousadia toda foi gasta.
+
+   Substituiu a bandeirinha de quermesse da versão anterior. A bandeirinha era
+   bonita e era nossa invenção; esta é a marca.                              */
+
+.vss-band {
+  height: clamp(4px, .5vh, 8px);
+  flex: none;
+  background: var(--gradiente);
+}
+
+/* Versão grossa, para o topo do telão: a faixa vira suporte do wordmark. */
+.vss-band.tall { height: clamp(10px, 1.2vh, 20px); }
+
+/* ── Wordmark ─────────────────────────────────────────────────────────────
+   Advent Pro levemente expandida, com o degradê vivo recortado no texto. É a
+   mesma letra do logotipo da equipe. */
+
+.vss-brand {
+  font-family: var(--display);
+  font-weight: 600;
+  font-stretch: var(--wd-wide);
+  letter-spacing: .02em;
+  background: var(--brand-paint);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+}
+
+.vss-tagline {
+  color: var(--muted);
+  font-size: var(--fs-tv-label);
+}
+
+/* Brilho de fundo com as cores da marca. Fica atrás de tudo e não intercepta
+   clique. Só nas telas que o público vê — em ferramenta atrapalha a leitura de
+   dado fino, e por isso não tem equivalente no tema claro. */
+.vss-glow::before {
+  content: '';
+  position: fixed;
+  inset: -30%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side, var(--roxo-20),    transparent) 16% 20% / 58% 58% no-repeat,
+    radial-gradient(closest-side, var(--menta-12),   transparent) 84% 76% / 58% 58% no-repeat,
+    radial-gradient(closest-side, var(--ciano-12),   transparent) 62% 14% / 46% 46% no-repeat;
+}
+
+
+/* ═══ Números da marca ══════════════════════════════════════════════════════
+   Placar, cronômetro, contagem regressiva. É o texto mais importante da tela
+   inteira e o único que precisa ser lido do fundo do ginásio.
+
+   POPPINS 900, e não a Advent Pro. A Advent Pro é uma letra de traço fino e
+   contador estreito — vira o wordmark muito bem e vira um placar sujo: no
+   tamanho grande o "1" fica uma haste solta e o "3" perde a forma. O que faz
+   número ler a dez metros é contador aberto e haste grossa, que é exatamente
+   o que a Poppins Black tem por ser geométrica de círculo.
+
+   Os três tokens existem para que trocar o numeral do produto inteiro seja
+   uma edição em um lugar só, e não uma caçada por `font-family` nas telas.  */
+
+:root {
+  --num-family:  var(--font);
+  --num-weight:  900;
+  --num-stretch: 100%;
+}
+
+.vss-num {
+  font-family: var(--num-family);
+  font-weight: var(--num-weight);
+  font-stretch: var(--num-stretch);
+  font-variant-numeric: tabular-nums;
+  line-height: .92;
+  letter-spacing: -.02em;
+}
+
+
+/* ═══ Cartão ════════════════════════════════════════════════════════════ */
+
+.vss-card {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+}
+
+/* Sobre o brilho da TV, o cartão precisa deixar o degradê passar. */
+.vss-card.glass {
+  background: var(--glass);
+  backdrop-filter: blur(3px);
+}
+
+/* Cartão que está esperando um clique seu no vídeo (calibração). O estado
+   "armado" precisa ser impossível de não notar: quem armou e esqueceu clica no
+   lugar errado e perde a calibração. */
+.vss-card.armed {
+  border-color: var(--ciano);
+  box-shadow: inset 0 0 0 1px var(--ciano);
+}
+
+/* Título de seção: pequeno, espaçado, apagado. Ele organiza, não compete. */
+.vss-card h2,
+.vss-section-title {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: var(--sp-3);
+}
+
+
+/* ═══ Botão ═════════════════════════════════════════════════════════════ */
+
+.vss-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+
+  /* 40px de altura mínima: alvo de toque confortável. O operador aperta isto
+     de pé, apressado, com uma fila olhando. */
+  min-height: 40px;
+  padding: var(--sp-2) var(--sp-4);
+
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+
+  transition: background var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+}
+
+.vss-btn:hover:not(:disabled)  { background: var(--surface-3); }
+.vss-btn:active:not(:disabled) { transform: translateY(1px); }
+
+.vss-btn:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+
+/* A ação principal da tela. Uma por cartão, no máximo. Recebe a faixa da marca
+   como preenchimento — é o único botão que carrega o degradê, e é assim que
+   ele se destaca sem precisar de sombra. */
+.vss-btn.primary {
+  background: linear-gradient(100deg, var(--roxo), var(--esmeralda));
+  border-color: transparent;
+  color: #FFF;
+}
+.vss-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+  background: linear-gradient(100deg, var(--roxo), var(--esmeralda));
+}
+
+/* Botões que carregam identidade de lado do campo. */
+.vss-btn.visitante { border-color: var(--ciano-45);   color: var(--visitante); }
+.vss-btn.ia        { border-color: var(--magenta-45); color: var(--ia); }
+
+/* Destrutivo: vermelho na borda e no texto, nunca no preenchimento. Botão
+   vermelho cheio atrai o clique que ele deveria desencorajar. */
+.vss-btn.danger {
+  border-color: var(--danger-45);
+  color: var(--danger);
+}
+.vss-btn.danger:hover:not(:disabled) {
+  background: var(--danger-12);
+  border-color: var(--danger);
+}
+
+/* Botão de alternância, aceso. */
+.vss-btn.on {
+  background: var(--ciano-20);
+  border-color: var(--ciano);
+  color: var(--visitante);
+}
+
+.vss-btn.ghost { background: transparent; }
+
+.vss-btn.sm {
+  min-height: 32px;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+/* Linha de botões que dividem a largura por igual. */
+.vss-btns { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.vss-btns > .vss-btn { flex: 1 1 auto; min-width: 92px; }
+
+
+/* ═══ Campo de texto ════════════════════════════════════════════════════ */
+
+.vss-input {
+  width: 100%;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+.vss-input:focus {
+  outline: none;
+  border-color: var(--ciano);
+  box-shadow: var(--focus);
+}
+.vss-input::placeholder { color: var(--muted); font-weight: 400; }
+
+/* Nome de visitante: caixa alta, porque é assim que aparece no telão. Ver o
+   texto já no formato final evita a surpresa de digitar minúsculo. */
+.vss-input.nome { text-transform: uppercase; letter-spacing: .04em; }
+
+
+/* ═══ Slider ════════════════════════════════════════════════════════════
+   A calibração é feita quase toda no slider. Vale desenhá-lo. */
+
+.vss-slider {
+  display: grid;
+  grid-template-columns: 5.5em 1fr 3.2em;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+.vss-slider > label  { font-size: var(--fs-sm); color: var(--muted); font-family: var(--mono); }
+.vss-slider > output { font-size: var(--fs-sm); text-align: right;   font-family: var(--mono); }
+
+.vss-slider input[type=range] {
+  -webkit-appearance: none;
+          appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: var(--r-full);
+  cursor: pointer;
+}
+.vss-slider input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--ciano);
+  border: 2px solid var(--bg);
+  cursor: grab;
+}
+.vss-slider input[type=range]::-moz-range-thumb {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--ciano);
+  border: 2px solid var(--bg);
+  cursor: grab;
+}
+.vss-slider input[type=range]:focus-visible { box-shadow: var(--focus); }
+
+
+/* ═══ Select ════════════════════════════════════════════════════════════ */
+
+.vss-select {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+
+
+/* ═══ Etiqueta ══════════════════════════════════════════════════════════ */
+
+.vss-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.vss-badge.live   { color: var(--ok);     border-color: var(--menta-45); }
+.vss-badge.warn   { color: var(--warn);   border-color: var(--laranja-45); }
+.vss-badge.danger { color: var(--danger); border-color: var(--danger-45); }
+.vss-badge.ia     { color: var(--ia);     border-color: var(--magenta-45); }
+.vss-badge.visitante { color: var(--visitante); border-color: var(--ciano-45); }
+
+/* Bolinha de estado dentro da etiqueta, ou solta ao lado de um rótulo. */
+.vss-dot {
+  width: .62em;
+  height: .62em;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.vss-dot.pulsing { animation: vss-blink 1.5s ease-in-out infinite; }
+
+@keyframes vss-blink {
+  0%, 100% { opacity: 1;   transform: scale(1);  }
+  50%      { opacity: .25; transform: scale(.8); }
+}
+
+
+/* ═══ Tecla ═════════════════════════════════════════════════════════════
+   Atalho de teclado desenhado como tecla. Mostrar o atalho ao lado do botão é
+   o que faz o operador parar de mirar no botão com a fila esperando. */
+
+.vss-kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 5px;
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  font: var(--fs-xs)/1.5 var(--mono);
+  text-align: center;
+  color: var(--text-dim);
+}
+
+
+/* ═══ Texto de apoio ════════════════════════════════════════════════════ */
+
+.vss-hint {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  margin-top: var(--sp-2);
+}
+.vss-hint strong, .vss-hint b { color: var(--text-dim); font-weight: 600; }
+
+.vss-code {
+  background: var(--bg-deep);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  font: var(--fs-sm) var(--mono);
+  color: var(--text-dim);
+}
+
+
+/* ═══ Métrica ═══════════════════════════════════════════════════════════════
+   Um número grande com rótulo pequeno. É o bloco de que as telas de staff mais
+   precisam e o que cada uma vinha inventando por conta.
+
+   O número vem em mono e não em display de propósito: aqui ele é DADO, para
+   ler de perto e comparar entre linhas, não placar para ver de longe.        */
+
+.vss-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.vss-stat > .k {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.vss-stat > .v {
+  font-family: var(--mono);
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--text);
+  white-space: nowrap;
+}
+.vss-stat > .v small {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin-left: 2px;
+}
+.vss-stat.ok   > .v { color: var(--ok); }
+.vss-stat.warn > .v { color: var(--warn); }
+.vss-stat.bad  > .v { color: var(--danger); }
+
+/* Fileira de métricas que se acomoda sozinha. */
+.vss-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--sp-4);
+}
+
+
+/* ═══ Tabela de telemetria ══════════════════════════════════════════════
+   Chave à esquerda apagada, valor à direita alinhado. Números em mono para a
+   coluna não tremer a 30 Hz. */
+
+.vss-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.vss-table td { padding: 3px 0; }
+.vss-table td:first-child { color: var(--muted); }
+.vss-table td:last-child {
+  text-align: right;
+  font-family: var(--mono);
+  color: var(--text-dim);
+}
+.vss-table td.ok  { color: var(--ok); }
+.vss-table td.bad { color: var(--danger); }
+
+
+/* ═══ Fluxo ═════════════════════════════════════════════════════════════════
+   Peças do painel de topologia: quem envia o que para quem. Ficam aqui, e não
+   na página, porque o mesmo vocabulário aparece no diagnóstico do rádio e na
+   calibração — nó, tópico, elo, estado.
+
+   A cor NUNCA é o único sinal: `ok` também vem com check, `bad` com x, e
+   `unknown` com traço. Um painel de diagnóstico lido por quem não distingue
+   verde de vermelho tem que continuar respondendo à pergunta.               */
+
+.vss-node {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--muted);
+  border-radius: var(--r-sm);
+}
+.vss-node .nome   { font-weight: 600; font-size: var(--fs-md); }
+.vss-node .detalhe{ font-family: var(--mono); font-size: var(--fs-sm); color: var(--muted); }
+
+.vss-node.ok      { border-left-color: var(--ok); }
+.vss-node.warn    { border-left-color: var(--warn); }
+.vss-node.bad     { border-left-color: var(--danger); }
+.vss-node.unknown { border-left-color: var(--line-strong); }
+
+/* O tópico que liga dois nós. Mono porque é um nome de tópico ROS e o leitor
+   precisa poder copiar para um `ros2 topic echo` sem duvidar de um caractere. */
+.vss-topic {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.vss-topic.ok   { border-color: var(--menta-45);   color: var(--ok); }
+.vss-topic.warn { border-color: var(--laranja-45); color: var(--warn); }
+.vss-topic.bad  { border-color: var(--danger-45);  color: var(--danger); }
+
+/* O trilho vertical entre dois nós. Pinta-se pelo estado do elo. */
+.vss-edge {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-left: var(--sp-5);
+  min-height: var(--sp-6);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  position: relative;
+}
+.vss-edge::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--sp-5) - 9px);
+  top: 0; bottom: 0;
+  width: 2px;
+  background: currentColor;
+  opacity: .35;
+}
+.vss-edge.ok   { color: var(--ok); }
+.vss-edge.warn { color: var(--warn); }
+.vss-edge.bad  { color: var(--danger); }
+/* Elo por onde não passou nada: tracejado, não some. "Sem dado" é informação. */
+.vss-edge.unknown::before {
+  background: repeating-linear-gradient(currentColor 0 4px, transparent 4px 9px);
+}
+
+
+/* ═══ Ranking ═══════════════════════════════════════════════════════════
+   Mesma estrutura na TV e no operador; só a escala muda. */
+
+.vss-rank { list-style: none; }
+
+.vss-rank-row {
+  display: grid;
+  grid-template-columns: 2.2em 1fr auto;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.vss-rank-row:last-child { border-bottom: none; }
+
+/* Posição e tempo saem na letra do placar: o ranking é placar. Estavam em
+   monoespaçada, o que alinhava bem mas dava um ar de terminal que não é o do
+   produto — `tabular-nums` alinha igual. Peso 700 e não 900: aqui o número é
+   lido junto do nome, e o 900 esmagaria o nome ao lado. */
+.vss-rank-pos  { font-family: var(--num-family); font-weight: 700;
+                 font-variant-numeric: tabular-nums; color: var(--muted); }
+.vss-rank-name { font-weight: 600; overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; }
+.vss-rank-time { font-family: var(--num-family); font-weight: 700;
+                 font-variant-numeric: tabular-nums; }
+
+/* Pódio. Menta, ciano, azul — a mesma ordem do degradê da marca. */
+.vss-rank-row:nth-child(1) .vss-rank-pos { color: var(--menta); }
+.vss-rank-row:nth-child(2) .vss-rank-pos { color: var(--ciano); }
+.vss-rank-row:nth-child(3) .vss-rank-pos { color: var(--azul); }
+
+/* A linha do visitante que acabou de jogar. */
+.vss-rank-row.highlight {
+  background: linear-gradient(90deg, var(--menta-20), transparent);
+  border-radius: var(--r-sm);
+  padding-left: var(--sp-2);
+  margin-left: calc(var(--sp-2) * -1);
+}
+
+
+/* ═══ Aviso de conexão ══════════════════════════════════════════════════
+   Some quando está tudo bem. Toda tela tem um, sempre no mesmo canto, com o
+   mesmo texto — quem opera aprende uma vez. É uma das duas coisas que flutuam
+   de verdade sobre o resto, e por isso uma das duas que ainda têm sombra. */
+
+.vss-conn {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: 100;
+  display: none;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-full);
+  background: var(--surface-1);
+  border: 1px solid var(--laranja-45);
+  color: var(--warn);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  box-shadow: var(--shadow-float);
+}
+.vss-conn.on { display: flex; }
+
+
+/* ═══ Utilidades ════════════════════════════════════════════════════════ */
+
+.vss-spacer { flex: 1; }
+.vss-mono   { font-family: var(--mono); }
+
+/* Só para leitor de tela. Usado para dar nome a controle que é só ícone e para
+   anunciar mudança de estado em `aria-live`. */
+.vss-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
