@@ -19,7 +19,16 @@
 #endif
 
 RF24 radio(6, 10);
-const byte address[6] = "00001";
+
+// Um endereço por robô. Ver o bloco do auto-ACK no setup() para o porquê.
+// Mesma tabela no `robot_rx.ino` e no `tx_probe.ino`. Mudou aqui, mude nos três.
+constexpr uint8_t MAX_ROBOS = 2;
+const byte ENDERECOS[MAX_ROBOS][6] = {"VSS00", "VSS01"};
+
+// Trocar o pipe custa algumas escritas SPI, então só troca quando o destino
+// muda. A 30 Hz alternando entre dois robôs isso é uma troca por pacote, que o
+// loop aguenta; guardar o último evita a troca redundante quando só um joga.
+int32_t destino_atual = -1;
 
 constexpr uint8_t START_BYTE = 0x14;
 
@@ -67,13 +76,29 @@ void setup() {
   radio.setDataRate(RF24_1MBPS);
   radio.setPALevel(RF24_PA_LOW);
 
-  // Sem auto-ACK: é broadcast para vários robôs no mesmo endereço, e ninguém
-  // confirma. Com ACK ligado, cada write() espera resposta e faz 15 retries,
-  // travando a ponte por dezenas de ms por pacote.
-  radio.setAutoAck(false);
-  radio.setRetries(0, 0);
+  // ============================================================================
+  //  NÃO DESLIGUE O AUTO-ACK. Medido em 10/08/2026, robô a 1 m da ponte, 120
+  //  pacotes a 30 Hz, contando os aceitos no log do próprio robô:
+  //
+  //      ACK off, retries 0,0  ->    0,0%     (era esta a configuração daqui)
+  //      ACK off, retries 5,5  ->    0,0%
+  //      ACK on,  retries 0,0  ->   87,5%
+  //      ACK on,  retries 5,5  ->  100,0%
+  //
+  //  Zero, não "ruim". Com auto-ACK desligado este link não entrega um único
+  //  pacote — e nem a ponte nem o robô registram erro, porque `write()` sem ACK
+  //  devolve `true` assim que o pacote sai do FIFO, sem prova de que alguém
+  //  ouviu. O sintoma é robô parado com os dois logs limpos.
+  //
+  //  O comentário antigo aqui dizia que ACK travaria a ponte com 15 retries.
+  //  A parte verdadeira era o 15: o default. Com 5 o custo é o medido acima.
+  // ============================================================================
+  radio.setAutoAck(true);
 
-  radio.openWritingPipe(address);
+  // 5 retentativas a 1,5 ms. Recupera as perdas (87,5% -> 100%) sem o default de
+  // 15, que trava o loop por ~60 ms por pacote quando um robô está desligado.
+  radio.setRetries(5, 5);
+
   radio.stopListening();
 
   Serial.println(radio.isChipConnected() ? "tx_bridge | radio OK" : "tx_bridge | radio FAIL");
@@ -99,11 +124,32 @@ void loop() {
     uint8_t expected = calculateChecksum(*pkt);
 
     if (pkt->checksum == expected) {
-      radio.write(buffer, PACKET_SIZE);
+      // Um id fora da tabela indexaria ENDERECOS fora do array e mandaria o
+      // pacote para um endereço de lixo. Descarta, e diz por quê.
+      if (pkt->robot_id < 0 || pkt->robot_id >= MAX_ROBOS) {
+#if DEBUG_TX
+        Serial.print("ID FORA DA TABELA: ");
+        Serial.println(pkt->robot_id);
+#endif
+        bufferIndex = 0;
+        continue;
+      }
+
+      if (pkt->robot_id != destino_atual) {
+        radio.openWritingPipe(ENDERECOS[pkt->robot_id]);
+        destino_atual = pkt->robot_id;
+      }
+
+      // Com ACK ligado isto devolve `true` só se o robô confirmou em hardware —
+      // então aqui existe uma medida de entrega real, que sem ACK não existia.
+      bool entregue = radio.write(buffer, PACKET_SIZE);
 
 #if DEBUG_TX
       Serial.print("TX id ");
-      Serial.println(pkt->robot_id);
+      Serial.print(pkt->robot_id);
+      Serial.println(entregue ? " ACK" : " SEM ACK");
+#else
+      (void)entregue;
 #endif
     } else {
       // Checksum ruim quase sempre significa que perdemos o alinhamento do

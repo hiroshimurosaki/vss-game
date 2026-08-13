@@ -115,8 +115,34 @@ três: `shared_interfaces/include/shared_interfaces/RadioMessage.h`,
 `static_assert` de 14 bytes, e `tools/radio_test.py --dry-run` monta o mesmo
 pacote em Python para comparar os dois lados.
 
-**3. Cada robô precisa de `MY_ROBOT_ID` diferente** em `robot_rx.ino`. Dois
-robôs com o mesmo ID andam juntos.
+**3. Cada robô precisa de `MY_ROBOT_ID` diferente**, e ele escolhe também o
+**endereço de rádio** do robô (ver contrato 4). Não edite o `#define`: use
+`./tools/gravar.sh debug --id 0`, que sobrescreve pelo compilador — assim os
+dois robôs saem do mesmo fonte e não dá para esquecer de trocar entre uma
+gravação e outra. Dois robôs com o mesmo ID andam juntos.
+
+**4. O auto-ACK do rádio é obrigatório nos dois lados, e cada robô tem seu
+endereço.** Medido em 10/08/2026, 120 pacotes a 30 Hz, robô a 1 m da ponte:
+
+| ponte | robô | entrega |
+|---|---|---|
+| `setAutoAck(false)` | `false` | **0,0%** |
+| `setAutoAck(false)` | `true` | **0,0%** |
+| `setAutoAck(true)` | `false` | **0,0%** |
+| `setAutoAck(true)` | `true` | **100,0%** |
+
+Zero, não "ruim" — e sem erro em nenhum dos dois logs, porque `write()` sem ACK
+devolve `true` assim que o pacote sai do FIFO, sem prova de que alguém ouviu. O
+sintoma é robô parado com tudo limpo, que é o pior tipo. **Se o robô não anda,
+confira isto antes de suspeitar de qualquer outra coisa.**
+
+O preço do ACK é que ele só funciona com **um receptor por endereço**: dois
+robôs no mesmo endereço confirmam juntos e as respostas colidem. Daí a tabela
+`ENDERECOS` (`{"VSS00", "VSS01"}`, indexada por `robot_id`), que vive em **três
+lugares** e precisa ser a mesma nos três: `tx_bridge.ino`, `robot_rx.ino` e
+`tx_probe.ino`. A ponte troca o `openWritingPipe` conforme o `robot_id` do
+pacote. `setRetries(5, 5)` é o que leva 87,5% a 100%; o default de 15 travaria o
+loop por ~60 ms sempre que um robô estivesse fora do ar.
 
 ---
 
@@ -139,21 +165,52 @@ ros2 launch startup teleop.py num_robots:=2    # teleoperação pura
 ./tools/radio_test.py      # fala com a ponte sem ROS (linha de comando)
 ./tools/radio_console.py   # o mesmo, com teclado no navegador (:8060)
                            # + taxa de entrega, se a ponte tiver o tx_probe
+./tools/painel.py          # TODO o diagnóstico numa tela só (:8062) — ele sobe
+                           # o debug_panel e o flow_panel sozinho e derruba no
+                           # Ctrl+C só o que ele subiu. Abra só o :8062.
 ```
 
-Gravar firmware (`arduino-cli` em `~/.local/bin`):
+**O `debug_panel` grava toda sessão em `~/.vss-game/logs/*.jsonl`** (ligado por
+padrão, `--no-log` desliga; as 10 sessões mais recentes ficam, cada uma
+rotacionando em partes de 64 MB). O arquivo **não** é o log da tela: a tela é
+uma janela de 120 linhas que descarta o que acontece a 30 Hz (`OK |`, `TX id`,
+`ID ALHEIO`) para não encher, e é justamente essa série temporal que responde
+"o que mudou no instante em que parou". No arquivo vai a linha crua dos dois
+lados, sem filtro, mais um retrato por segundo dos contadores e do veredito.
+Medido: numa janela em que a tela guardou 2 linhas, o arquivo guardou 62.
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
-arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 firmware/tx_bridge
-arduino-cli upload -p /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0 \
-                   --fqbn arduino:avr:nano:cpu=atmega328 firmware/tx_bridge
+ls -t ~/.vss-game/logs/ | head
+jq -r 'select(.k=="raw") | "\(.h) \(.src) \(.line)"'                SESSAO.jsonl
+jq -r 'select(.k=="snap") | "\(.h) rx_ok=\(.numbers.rx_ok)"'        SESSAO.jsonl
 ```
 
-**Use sempre o caminho `by-id` da ponte.** Só ela tem número de série, então
-`/dev/ttyUSB0` pode virar o Arduino errado quando há dois plugados. No Pop!_OS,
-se o `/dev/ttyUSB*` não aparecer, é o `brltty` roubando o CH340 — já foi
-resolvido com `systemctl mask brltty.service brltty-udev.service`.
+Ausência do registro `end` no fim do arquivo **é informação**: quer dizer que o
+painel foi morto, não que ele parou sozinho.
+
+Gravar firmware — use o `gravar.sh`, que descobre qual placa é qual sozinho:
+
+```bash
+./tools/gravar.sh feira           # o que joga: sem debug nos dois
+./tools/gravar.sh debug           # o que o painel precisa: debug nos dois
+./tools/gravar.sh probe           # ponte medindo entrega confirmada
+./tools/gravar.sh debug --id 0    # grava o robô como robô 0 (o da IA)
+```
+
+**Não confie no `by-id` para escolher a placa.** O que o texto antigo aqui dizia
+— "só a ponte tem número de série" — está errado, medido em 10/08/2026 com as
+duas plugadas: as duas são CH340 (`1a86:7523`) **sem** serial, o udev gera o
+mesmo nome e **só uma ganha o link**, sorteada a cada replug. Já foi vista
+apontando para a ponte e para o robô. O jeito confiável é o **banner de boot**,
+que é o que o `gravar.sh` e o `debug_panel.py` fazem — e ele só sai se a
+abertura da serial resetar a placa (`stty ... hupcl`; o `arduino-cli monitor`
+não reseta e por isso nunca mostra banner). Se precisar de um caminho estável,
+`/dev/serial/by-path/` distingue por porta USB física.
+
+Placa muda não é placa morta: parado, sem tráfego, o Nano não imprime nada.
+
+No Pop!_OS, se o `/dev/ttyUSB*` não aparecer, é o `brltty` roubando o CH340 —
+já foi resolvido com `systemctl mask brltty.service brltty-udev.service`.
 
 **Sempre pare com `./tools/stop.sh`.** Matar por nome de processo deixa metade
 do stack vivo, porque `cinematica`, `direction`, `joy_aggregator` e
@@ -245,7 +302,7 @@ Armadilhas de cor, todas medidas:
 | `shared_interfaces`, `controller_interpreter`, `cinematica`, `startup` | prontos |
 | `simulator`, `ai_player`, `game_master` | prontos |
 | `vision_game` | detecta 100% a 30 Hz, calibrado |
-| `robot_communication` + `firmware/` | prontos; **rádio validado em 06/08** (ponte envia, robô recebe) |
+| `robot_communication` + `firmware/` | prontos; **link medido em 10/08: 300/300 pacotes a 30 Hz, 100%**, com endereço por robô e o robô 1 ignorando o que é do 0 |
 
 Calibração salva em `~/.vss-game/vision.json` — proporção dos cantos fechando
 em 0,10% do campo real.
@@ -253,9 +310,11 @@ em 0,10% do campo real.
 **Falta para o jogo estar 100%** — ver `README.md` para o detalhe. A cadeia
 do olho à roda já fechou pelo menos uma vez; o que resta é montagem e aferição:
 
-1. **o `franky.ino` não filtra por `robot_id`** — obedece todo pacote. Serve
-   para um robô na bancada, não serve para dois em campo. Antes do segundo
-   robô, gravar `firmware/robot_rx` com `MY_ROBOT_ID` distinto em cada um
+1. ~~o `franky.ino` não filtra por `robot_id`~~ **RESOLVIDO em 10/08.** O
+   `robot_rx` está gravado e validado: cada robô tem endereço próprio e o filtro
+   por ID por cima. Testado nos dois sentidos — gravado como id 0 recebe só o
+   que é do 0, como id 1 só o que é do 1. Falta apenas repetir com o **segundo
+   robô físico**, com `./tools/gravar.sh feira --id 0` nele
 2. `wheel_speed_max` (0,75) é chute declarado — medir cronometrando um metro
 3. exatidão da visão nunca medida contra régua; o **ângulo** em especial nunca
    foi conferido contra referência física

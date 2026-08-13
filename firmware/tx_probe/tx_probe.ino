@@ -27,7 +27,13 @@
 #include <stdint.h>
 
 RF24 radio(6, 10);
-const byte address[6] = "00001";
+
+// Precisa ser a mesma tabela do `tx_bridge.ino` e do `robot_rx.ino`, senão o
+// probe mede um link que não é o do jogo — e mede 0%, sem que nada esteja errado.
+constexpr uint8_t MAX_ROBOS = 2;
+const byte ENDERECOS[MAX_ROBOS][6] = {"VSS00", "VSS01"};
+
+int32_t destino_atual = -1;
 
 constexpr uint8_t START_BYTE = 0x14;
 
@@ -80,7 +86,6 @@ void setup() {
   // inteiro perdido. 5 dá margem de sobra num link bom e mantém a ponte viva.
   radio.setRetries(5, 5);
 
-  radio.openWritingPipe(address);
   radio.stopListening();
 
   // Distingue os dois "não funciona" que parecem iguais de fora:
@@ -108,6 +113,18 @@ void loop() {
     Message *pkt = reinterpret_cast<Message *>(buffer);
 
     if (pkt->checksum == calculateChecksum(*pkt)) {
+      if (pkt->robot_id < 0 || pkt->robot_id >= MAX_ROBOS) {
+        Serial.print("ID FORA DA TABELA: ");
+        Serial.println(pkt->robot_id);
+        bufferIndex = 0;
+        continue;
+      }
+
+      if (pkt->robot_id != destino_atual) {
+        radio.openWritingPipe(ENDERECOS[pkt->robot_id]);
+        destino_atual = pkt->robot_id;
+      }
+
       bool ok = radio.write(buffer, PACKET_SIZE);
       sent++;
       if (ok) {

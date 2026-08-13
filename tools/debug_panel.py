@@ -34,6 +34,14 @@ não tem o que ler:
 Debug ligado deixa o loop mais lento e pode perder pacote: é para diagnosticar,
 não para jogar. Regrave sem o `-D` antes da feira.
 
+Toda sessão é gravada em `~/.vss-game/logs/` (JSONL), para o caso de a falha
+aparecer quando ninguém está olhando a tela — `--no-log` desliga. O que fica
+gravado é mais do que a tela mostra: veja o `Recorder`. Para ler depois:
+
+    ls -t ~/.vss-game/logs/ | head                       # a sessão mais recente
+    jq -r 'select(.k=="raw") | "\\(.h) \\(.src) \\(.line)"' SESSAO.jsonl
+    jq -r 'select(.k=="snap") | "\\(.h) rx_ok=\\(.numbers.rx_ok) \\(.verdict)"' SESSAO.jsonl
+
 Só stdlib: nada de pyserial, nada de aiohttp.
 """
 
@@ -192,6 +200,12 @@ class State:
         self.bridge_banner = ''
         self.bridge_tx = Rate()
         self.bridge_speaks = False        # a ponte já disse qualquer coisa?
+        # ACK confirmado × sem confirmação. Contados separados porque o ACK é
+        # respondido pelo HARDWARE do nRF24 do robô: é o único sinal de vida que
+        # sobrevive ao robô sair do USB. Sem isto o painel fica cego justamente
+        # no teste em que o robô anda solto, que é o teste que importa.
+        self.bridge_ack = Rate()
+        self.bridge_noack = Rate()
 
         # ar → robô (linhas do robot_rx com DEBUG_RADIO=1)
         self.robot_banner = ''
@@ -226,6 +240,165 @@ class State:
 
     def note(self, source, line):
         self.log.append({'t': time.strftime('%H:%M:%S'), 'src': source, 'line': line[:90]})
+
+
+# ── Gravação em disco ────────────────────────────────────────────────────────
+
+LOG_DIR_DEFAULT = os.path.expanduser('~/.vss-game/logs')
+
+
+class Recorder:
+    """Grava a sessão em JSONL para autópsia depois que o painel morrer.
+
+    O `st.log` da tela é uma janela de 120 linhas que some junto com o processo:
+    serve para olhar agora, não para diagnosticar depois. E para caber na tela
+    ele **descarta** justamente o que acontece a 30 Hz (`OK |`, `TX id`,
+    `ID ALHEIO`) — que é a série temporal onde a falha intermitente aparece.
+    Um arquivo que fosse espelho da tela herdaria os dois defeitos.
+
+    Aqui é o contrário: linha crua, toda ela, dos dois lados, mais um retrato
+    dos contadores e do veredito por segundo. Quem ler isto depois quer
+    responder "o que mudou no instante em que parou"; para isso, o que a tela
+    filtra é o dado.
+
+    Um registro por linha, distinguidos pela chave `k`:
+
+        meta   uma vez, na abertura: portas, argv, hora de início
+        raw    uma por linha de serial: {t, h, src, line}
+        snap   uma por segundo: os mesmos contadores que a tela mostra
+        end    uma vez, no encerramento limpo (a ausência dele já é informação:
+               significa que o painel foi morto, não que parou)
+
+    Falha de escrita nunca derruba o painel. O painel é a ferramenta de
+    diagnóstico: perder o log é ruim, perder o diagnóstico é pior.
+    """
+
+    def __init__(self, directory=LOG_DIR_DEFAULT, max_bytes=64 << 20,
+                 keep_sessions=10, keep_parts=2):
+        self.dir = directory
+        self.max_bytes = max_bytes
+        self.keep_parts = keep_parts
+        self.lock = threading.Lock()
+        self.fh = None
+        self.written = 0
+        self.part = 0
+        self.failed = False
+        self.snapshotter = None
+        self.running = True
+        self._meta = None
+
+        os.makedirs(self.dir, exist_ok=True)
+        self.base = 'debug_panel-' + time.strftime('%Y%m%d-%H%M%S')
+        self._prune_sessions(keep_sessions)
+        self._roll()
+
+    # -- arquivos --------------------------------------------------------
+
+    def _path(self, part):
+        return os.path.join(self.dir, f'{self.base}-part{part}.jsonl')
+
+    def _roll(self):
+        """Abre a próxima parte e joga fora as partes velhas desta sessão.
+
+        Rotação em vez de parar no limite: numa falha intermitente o trecho que
+        importa é o do fim, e um arquivo que para de crescer perde exatamente
+        esse trecho. O custo é o teto virar `keep_parts` × `max_bytes`.
+
+        O `meta` é reescrito no topo de cada parte. Sem isso a sessão longa — a
+        que mais tem chance de ser lida depois — perde o cabeçalho junto com a
+        parte 1, e sobra um arquivo de linhas sem dizer de que porta vieram.
+        """
+        if self.fh:
+            self.fh.close()
+        self.part += 1
+        self.fh = open(self._path(self.part), 'w', buffering=1)
+        self.written = 0
+        if self._meta:
+            now = time.time()
+            head = dict(self._meta, parte=self.part, continuacao=True,
+                        t=round(now, 3),
+                        h=time.strftime('%H:%M:%S', time.localtime(now)))
+            line = json.dumps(head, ensure_ascii=False) + '\n'
+            self.fh.write(line)
+            self.written += len(line)
+        for old in range(1, self.part - self.keep_parts + 1):
+            try:
+                os.remove(self._path(old))
+            except OSError:
+                pass
+
+    def _prune_sessions(self, keep):
+        """Mantém só as `keep` sessões mais recentes. O nome ordena por tempo."""
+        sessions = set()
+        for path in glob.glob(os.path.join(self.dir, 'debug_panel-*.jsonl')):
+            name = os.path.basename(path)
+            sessions.add(name.split('-part')[0])
+        for stale in sorted(sessions)[:-keep] if len(sessions) > keep else []:
+            for path in glob.glob(os.path.join(self.dir, stale + '-part*.jsonl')):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+    @property
+    def path(self):
+        return self._path(self.part)
+
+    # -- escrita ---------------------------------------------------------
+
+    def _write(self, rec):
+        if self.failed:
+            return
+        now = time.time()
+        rec['t'] = round(now, 3)
+        rec['h'] = time.strftime('%H:%M:%S', time.localtime(now)) + f'{now % 1:.3f}'[1:]
+        line = json.dumps(rec, ensure_ascii=False) + '\n'
+        with self.lock:
+            try:
+                self.fh.write(line)
+                self.written += len(line)
+                if self.written >= self.max_bytes:
+                    self._roll()
+            except OSError as exc:
+                self.failed = True
+                print(f'AVISO: gravação do log parou ({exc}); o painel segue.',
+                      file=sys.stderr)
+
+    def meta(self, **kw):
+        rec = dict(k='meta', parte=self.part, **kw)
+        self._write(rec)
+        with self.lock:
+            self._meta = {k: v for k, v in rec.items() if k not in ('t', 'h')}
+
+    def raw(self, src, line):
+        self._write({'k': 'raw', 'src': src, 'line': line})
+
+    def start_snapshots(self, produce, period=1.0):
+        """Chama `produce()` a cada `period` s e grava o que voltar como `snap`.
+
+        A política de o-que-gravar fica com quem chamou, de propósito: o retrato
+        tem de ser o **mesmo** que a tela mostra, e ele nasce lá.
+        """
+        def run():
+            while self.running:
+                time.sleep(period)
+                if not self.running:
+                    return
+                try:
+                    self._write(dict(k='snap', **produce()))
+                except Exception as exc:                       # noqa: BLE001
+                    self._write({'k': 'snap_erro', 'erro': repr(exc)})
+        self.snapshotter = threading.Thread(target=run, daemon=True)
+        self.snapshotter.start()
+
+    def close(self, motivo='fim'):
+        self.running = False
+        self._write({'k': 'end', 'motivo': motivo})
+        with self.lock:
+            try:
+                self.fh.close()
+            except OSError:
+                pass
 
 
 # ── Threads de serial ────────────────────────────────────────────────────────
@@ -277,12 +450,18 @@ class Sender(threading.Thread):
 
 
 class LineReader(threading.Thread):
-    """Lê linhas de uma serial e entrega ao parser. Nunca escreve."""
+    """Lê linhas de uma serial e entrega ao parser. Nunca escreve.
 
-    def __init__(self, fd, handler):
+    O `tap` recebe a linha **antes** do parser e sem filtro nenhum. Fica aqui, e
+    não dentro dos handlers, porque os handlers retornam cedo nos casos de 30 Hz
+    — gravar lá herdaria os furos que existem para poupar a tela.
+    """
+
+    def __init__(self, fd, handler, tap=None):
         super().__init__(daemon=True)
         self.fd = fd
         self.handler = handler
+        self.tap = tap
         self.running = True
 
     def run(self):
@@ -300,6 +479,8 @@ class LineReader(threading.Thread):
                 line, buf = buf.split(b'\n', 1)
                 text = line.decode('utf-8', 'replace').strip()
                 if text:
+                    if self.tap:
+                        self.tap(text)
                     self.handler(text)
             if len(buf) > 1024:
                 buf = buf[-256:]
@@ -315,6 +496,13 @@ def bridge_line(st):
             st.bridge_speaks = True
             if line.startswith('TX id'):
                 st.bridge_tx.hit()
+                # 'SEM ACK' termina em 'ACK': testar o negativo primeiro, senão
+                # a falha é contada como sucesso e o painel mente para o lado
+                # perigoso.
+                if line.endswith('SEM ACK'):
+                    st.bridge_noack.hit()
+                elif line.endswith('ACK'):
+                    st.bridge_ack.hit()
                 return                    # 30 Hz disso encheria o log
             if 'tx_bridge' in line:
                 st.bridge_banner = line
@@ -706,6 +894,11 @@ function render(s) {
   cl.className = 'v ' + (n.clients > 1 ? 'bad' : '');
   document.getElementById('n_hex').textContent = n.hex;
   document.getElementById('ports').textContent = n.ports;
+  // Onde o log foi parar precisa estar na tela: quem vai querer o arquivo é
+  // quem acabou de ver a falha, e a essa altura o stdout já rolou embora.
+  const p = document.getElementById('ports');
+  p.title = n.log_file ? 'gravando em ' + n.log_file : 'sessão não está sendo gravada';
+  p.style.opacity = n.log_file ? '' : '0.55';
 
   document.getElementById('log').innerHTML = s.log.slice().reverse()
     .map(e => `<div><span class="muted">${e.t} ${e.src.padEnd(5)}</span> ${e.line}</div>`).join('');
@@ -752,9 +945,43 @@ document.getElementById('boost').onclick = () =>
 """
 
 
+def numbers_of(st, sender, ports_label):
+    """O retrato dos contadores. Fonte única para a tela e para o log gravado.
+
+    Toma o `st.lock` por conta própria — não chame de dentro de um `with
+    st.lock`, que ele não é reentrante. Os campos do `sender` também são
+    escritos sob esse lock, por isso são lidos aqui dentro.
+    """
+    with st.lock:
+        return {
+            'robot_id': st.robot_id,
+            'fw_id': st.robot_id_fw,
+            'tx': st.tx.value(),
+            'bridge': st.bridge_tx.value() if st.bridge_speaks else None,
+            'ack': st.bridge_ack.value(),
+            'noack': st.bridge_noack.value(),
+            'rx_any': st.rx_any.value(),
+            'rx_ok': st.rx_ok.value(),
+            'rx_alheio': st.rx_alheio.value(),
+            'rx_checksum': st.rx_checksum.value(),
+            'rx_startbyte': st.rx_startbyte.value(),
+            'm1': st.rx_m1, 'm2': st.rx_m2,
+            'pwm_a': st.pwm_a, 'pwm_b': st.pwm_b,
+            'last_ok_line': st.last_ok_line,
+            'last_ok_age': (time.time() - st.last_ok_at) if st.last_ok_at else None,
+            'clients': len(st.clients),
+            'malformed': st.rx_malformed.value(),
+            'hex': ' '.join(f'{b:02x}' for b in sender.last_packet),
+            'ports': ports_label,
+            'sender_view': sender.view,
+            'state_obj_http': id(st),
+        }
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     state = None
     sender = None
+    recorder = None
     ports_label = ''
     robot_present = False
     bridge_present = False
@@ -808,28 +1035,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             st.last_cmd = time.time()
 
         links, verdict = diagnose(st, self.robot_present, self.bridge_present)
+        numbers = numbers_of(st, self.sender, self.ports_label)
+        numbers['log_file'] = self.recorder.path if self.recorder else None
         with st.lock:
-            numbers = {
-                'robot_id': st.robot_id,
-                'fw_id': st.robot_id_fw,
-                'tx': st.tx.value(),
-                'bridge': st.bridge_tx.value() if st.bridge_speaks else None,
-                'rx_any': st.rx_any.value(),
-                'rx_ok': st.rx_ok.value(),
-                'rx_alheio': st.rx_alheio.value(),
-                'rx_checksum': st.rx_checksum.value(),
-                'rx_startbyte': st.rx_startbyte.value(),
-                'm1': st.rx_m1, 'm2': st.rx_m2,
-                'pwm_a': st.pwm_a, 'pwm_b': st.pwm_b,
-                'last_ok_line': st.last_ok_line,
-                'last_ok_age': (time.time() - st.last_ok_at) if st.last_ok_at else None,
-                'clients': len(st.clients),
-                'malformed': st.rx_malformed.value(),
-                'hex': ' '.join(f'{b:02x}' for b in self.sender.last_packet),
-                'ports': self.ports_label,
-                'sender_view': self.sender.view,
-                'state_obj_http': id(st),
-            }
             log = list(st.log)
         self._json({'links': links, 'verdict': verdict, 'numbers': numbers, 'log': log})
 
@@ -842,6 +1050,14 @@ def main():
     ap.add_argument('--baud', type=int, default=115200)
     ap.add_argument('--http-port', type=int, default=8061)
     ap.add_argument('--rate', type=float, default=30.0)
+    ap.add_argument('--log-dir', default=LOG_DIR_DEFAULT,
+                    help=f'onde gravar a sessão (default: {LOG_DIR_DEFAULT})')
+    ap.add_argument('--no-log', action='store_true',
+                    help='não gravar nada em disco')
+    ap.add_argument('--log-max-mb', type=float, default=64.0,
+                    help='tamanho de cada parte antes de rotacionar (default: 64)')
+    ap.add_argument('--log-keep', type=int, default=10,
+                    help='quantas sessões antigas manter (default: 10)')
     args = ap.parse_args()
 
     print('descobrindo as placas pelo banner de boot (~3 s por porta)...')
@@ -876,16 +1092,37 @@ def main():
     # bootloader. A descoberta já gastou esse tempo lendo o banner.
     termios.tcflush(bridge[1], termios.TCIFLUSH)
 
+    rec = None
+    if not args.no_log:
+        try:
+            rec = Recorder(args.log_dir, int(args.log_max_mb * (1 << 20)), args.log_keep)
+        except OSError as exc:
+            print(f'AVISO: não consegui abrir o log em {args.log_dir} ({exc}); '
+                  'seguindo sem gravar.', file=sys.stderr)
+
     sender = Sender(bridge[1], st, rate_hz=args.rate)
     sender.start()
-    readers = [LineReader(bridge[1], bridge_line(st))]
+    readers = [LineReader(bridge[1], bridge_line(st),
+                          tap=(lambda ln: rec.raw('ponte', ln)) if rec else None)]
     if robot:
-        readers.append(LineReader(robot[1], robot_line(st)))
+        readers.append(LineReader(robot[1], robot_line(st),
+                                  tap=(lambda ln: rec.raw('robo', ln)) if rec else None))
     for r in readers:
         r.start()
 
+    if rec:
+        rec.meta(inicio=time.strftime('%Y-%m-%d %H:%M:%S'), portas=label,
+                 ponte=bridge[0], robo=robot[0] if robot else None,
+                 argv=sys.argv, rate_hz=args.rate)
+        rec.start_snapshots(lambda: {
+            'numbers': numbers_of(st, sender, label),
+            'verdict': diagnose(st, robot is not None, True)[1],
+        })
+        print(f'gravando a sessão em {rec.path}')
+
     Handler.state = st
     Handler.sender = sender
+    Handler.recorder = rec
     Handler.ports_label = label
     Handler.bridge_present = True
     Handler.robot_present = robot is not None
@@ -906,6 +1143,9 @@ def main():
                 time.sleep(0.02)
             for _, (fd, _k, _d) in found.items():
                 os.close(fd)
+            if rec:
+                rec.close()
+                print(f'log da sessão: {rec.path}')
 
 
 if __name__ == '__main__':

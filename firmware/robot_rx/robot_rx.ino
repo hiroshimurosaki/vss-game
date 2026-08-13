@@ -19,7 +19,14 @@
 #include <stdint.h>
 
 // ── Identidade deste robô ────────────────────────────────
+// Também escolhe o endereço de rádio (ver ENDERECOS): precisa ser < MAX_ROBOS.
+//
+// O `#ifndef` é o que permite gravar os dois robôs do mesmo fonte, sem editar o
+// arquivo entre uma gravação e outra — que é como se erra e acaba com dois
+// robôs de mesmo ID andando juntos. O `tools/gravar.sh --id N` usa isto.
+#ifndef MY_ROBOT_ID
 #define MY_ROBOT_ID 1
+#endif
 
 // ── Debug ────────────────────────────────────────────────
 // Serial.print custa tempo. Com DEBUG_RADIO ligado o loop fica mais lento e
@@ -37,8 +44,16 @@
 #endif
 
 // ── Radio ────────────────────────────────────────────────
-RF24 radio(6, 10);                                      
-const byte address[6] = "00001";
+RF24 radio(6, 10);
+
+// Um endereço por robô, e não um endereço só para todos. Isto existe porque o
+// auto-ACK é obrigatório neste link (ver o comentário em setAutoAck lá embaixo)
+// e ACK só funciona com um receptor por endereço: dois robôs no mesmo endereço
+// respondem juntos, as confirmações colidem no ar e a entrega despenca.
+//
+// Mesma tabela no `tx_bridge.ino` e no `tx_probe.ino`. Mudou aqui, mude nos três.
+constexpr uint8_t MAX_ROBOS = 2;
+const byte ENDERECOS[MAX_ROBOS][6] = {"VSS00", "VSS01"};
 
 // Precisa bater com o TX e com o start_byte do nó ROS.
 constexpr uint8_t START_BYTE = 0x14;
@@ -57,6 +72,11 @@ struct Message {
 constexpr size_t PACKET_SIZE = sizeof(Message);
 
 static_assert(PACKET_SIZE == 14, "Message precisa ter 14 bytes");
+
+// Sem isto, um MY_ROBOT_ID fora da tabela lê lixo da memória como endereço e o
+// robô escuta um endereço aleatório — que é indistinguível de rádio quebrado.
+static_assert(MY_ROBOT_ID >= 0 && MY_ROBOT_ID < MAX_ROBOS,
+              "MY_ROBOT_ID precisa estar dentro de ENDERECOS (0..MAX_ROBOS-1)");
 
 // ── Motor pins ───────────────────────────────────────────
 #define PWMA 5
@@ -205,7 +225,7 @@ void setup() {
 
   radio.begin();
 
-  radio.openReadingPipe(1, address);
+  radio.openReadingPipe(1, ENDERECOS[MY_ROBOT_ID]);
 
   // Canal e data rate precisam bater com o TX. Deixamos explícito nos dois lados
   // para não depender do default da biblioteca.
@@ -213,17 +233,28 @@ void setup() {
   radio.setDataRate(RF24_1MBPS);
   radio.setPALevel(RF24_PA_LOW);
 
-  // Precisa espelhar o tx_bridge, que desliga o auto-ACK. O TX é broadcast para
-  // vários robôs no mesmo endereço e ninguém confirma; se o RX continuar com
-  // auto-ACK ligado, ele gasta tempo de ar respondendo a cada pacote para um
-  // transmissor que não está ouvindo — e com mais de um robô em campo essas
-  // respostas colidem entre si.
-  radio.setAutoAck(false);
+  // ============================================================================
+  //  NÃO DESLIGUE O AUTO-ACK. Medido em 10/08/2026, com o robô a 1 m da ponte:
+  //
+  //      TX ACK off + RX ACK off  ->    0,0%      (era o firmware anterior)
+  //      TX ACK off + RX ACK on   ->    0,0%
+  //      TX ACK on  + RX ACK off  ->    0,0%
+  //      TX ACK on  + RX ACK on   ->  100,0%
+  //
+  //  Zero, não "ruim": com auto-ACK desligado em QUALQUER um dos lados este
+  //  link não entrega um único pacote, e sem erro nenhum nos dois logs. O robô
+  //  fica parado e o sintoma não aponta para cá. Foi o que segurou o projeto.
+  //
+  //  O preço é que ACK exige um receptor por endereço — daí a tabela ENDERECOS.
+  // ============================================================================
+  radio.setAutoAck(true);
 
   radio.startListening();
 
   Serial.print("robot_rx | ID: ");
-  Serial.println(MY_ROBOT_ID);
+  Serial.print(MY_ROBOT_ID);
+  Serial.print(" | endereço: ");
+  Serial.println((const char *)ENDERECOS[MY_ROBOT_ID]);
   Serial.println(radio.isChipConnected() ? "radio OK" : "radio FAIL");
 
 #if DEBUG_RADIO
