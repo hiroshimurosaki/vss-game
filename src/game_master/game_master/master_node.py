@@ -30,7 +30,7 @@ from shared_interfaces.msg import GameData, GameStatus, HighScore, HighScoreList
 from aiohttp import web, WSMsgType
 from ament_index_python.packages import get_package_share_directory
 
-from . import duelo, rules
+from . import duelo, rules, x1
 
 
 def _num(value):
@@ -53,8 +53,11 @@ class GameMaster(Node):
 
         self.declare_parameter('port', 8090)
 
-        # 'classico' = dois robôs, partida simultânea (rules.py).
-        # 'duelo'    = um robô só, turnos alternados (duelo.py).
+        # 'classico' = dois robôs, partida simultânea contra a IA (rules.py).
+        # 'duelo'    = um robô só, turnos alternados contra a IA (duelo.py).
+        # 'x1'       = dois robôs, duas PESSOAS, melhor de três (x1.py). É o
+        #              único que roda sem câmera: sem visão não há IA, mas dois
+        #              controles e um operador com o botão de gol bastam.
         self.declare_parameter('mode', 'classico')
         self.declare_parameter('target_score', 2)
         self.declare_parameter('time_limit', 180.0)
@@ -71,13 +74,19 @@ class GameMaster(Node):
 
         self.declare_parameter('difficulty', 'MEDIO')
 
-        # ── Só do modo duelo ─────────────────────────────────────────────
+        # ── Do duelo e do X1 (os dois contam em rounds) ──────────────────
         self.declare_parameter('turn_limit', 30.0)
         self.declare_parameter('rounds_to_win', 2)
         self.declare_parameter('max_rounds', 5)
         self.declare_parameter('round_hold', 5.0)
         self.declare_parameter('prep_min', 3.0)
         self.declare_parameter('prep_max', 20.0)
+
+        # ── Só do modo X1 ────────────────────────────────────────────────
+        # Teto de um round. Bem maior que o `turn_limit` do duelo porque aqui
+        # são duas pessoas disputando a mesma bola, e não um percurso solo: dá
+        # empate por travamento com muito mais facilidade.
+        self.declare_parameter('round_limit', 90.0)
 
         # A marca de onde todo turno começa, e as tolerâncias com que o árbitro
         # aceita que robô e bola estão no lugar. Precisam bater com o home_x/y
@@ -93,16 +102,29 @@ class GameMaster(Node):
 
         self._mode = str(self.get_parameter('mode').value).lower()
         self._duelo = self._mode == 'duelo'
+        self._x1 = self._mode == 'x1'
 
-        # Tempo de duelo e tempo de partida clássica não são a mesma grandeza —
-        # um é soma de turnos, o outro é uma partida inteira. Misturar os dois
-        # na mesma tabela produziria um ranking que não significa nada, então
-        # cada modo tem o seu arquivo.
-        nome = 'highscores_duelo.json' if self._duelo else 'highscores.json'
+        # Tempo de duelo, tempo de partida clássica e placar de X1 não são a
+        # mesma grandeza — um é soma de turnos, o outro é uma partida inteira, o
+        # terceiro tem DOIS nomes por linha. Misturar na mesma tabela produziria
+        # uma lista que não significa nada, então cada modo tem o seu arquivo.
+        nome = ('highscores_x1.json' if self._x1
+                else 'highscores_duelo.json' if self._duelo
+                else 'highscores.json')
         default_scores = os.path.join(os.path.expanduser('~'), '.vss-game', nome)
         self.declare_parameter('scores_file', default_scores)
 
-        if self._duelo:
+        if self._x1:
+            self.engine = x1.Engine(config=x1.Config(
+                rounds_to_win=int(self.get_parameter('rounds_to_win').value),
+                max_rounds=int(self.get_parameter('max_rounds').value),
+                round_limit=float(self.get_parameter('round_limit').value),
+                countdown=float(self.get_parameter('countdown').value),
+                goal_pause=float(self.get_parameter('goal_pause').value),
+                round_hold=float(self.get_parameter('round_hold').value),
+                result_hold=float(self.get_parameter('result_hold').value),
+            ))
+        elif self._duelo:
             self.engine = duelo.Engine(config=duelo.Config(
                 rounds_to_win=int(self.get_parameter('rounds_to_win').value),
                 max_rounds=int(self.get_parameter('max_rounds').value),
@@ -165,7 +187,7 @@ class GameMaster(Node):
         self._start_web_server()
 
         self.get_logger().info(
-            f'Árbitro no ar.\n'
+            f'Árbitro no ar. Modo: {self._mode}.\n'
             f'  TV:       http://localhost:{self.port}/\n'
             f'  Operador: http://localhost:{self.port}/operador\n'
             f'  Ranking:  {self._scores_path} ({len(self._scores)} tempos)')
@@ -197,7 +219,11 @@ class GameMaster(Node):
 
         m = self.engine.match
 
-        if self._duelo:
+        if self._x1:
+            self.get_logger().info(
+                f'GOL do {m.name(scorer)} em {x1.format_time(m.elapsed)} | '
+                f'round {m.round_number}: {m.rounds_a} x {m.rounds_b}')
+        elif self._duelo:
             self.get_logger().info(
                 f'GOL do {scorer} em {duelo.format_time(m.elapsed)} | '
                 f'round {m.round_number}: {m.player_rounds} x {m.ai_rounds}')
@@ -246,7 +272,14 @@ class GameMaster(Node):
         # empurra a bola pelo campo enquanto o próximo jogador digita o nome.
         enabled = Bool()
 
-        if self._duelo:
+        if self._x1:
+            # No X1 não existe IA. Publicar False sempre não é redundância: se
+            # alguém subir o `ai_player` por engano num terminal solto, ele
+            # começaria a empurrar a bola no meio da partida das duas pessoas, e
+            # ninguém olhando o campo entenderia de onde vem o robô possuído.
+            enabled.data = False
+
+        elif self._duelo:
             # No duelo há três respostas, não duas: a IA está jogando o turno
             # dela, está levando o robô de volta à marca, ou está fora do
             # volante. As duas primeiras exigem a IA liberada.
@@ -276,6 +309,9 @@ class GameMaster(Node):
         # que existe justamente para isso e que só termina quando o árbitro vê
         # robô e bola no lugar. Mandar de novo na CONTAGEM desfaria a
         # verificação que acabou de passar.
+        #
+        # O X1 cai no ramo do clássico de propósito: os dois têm CONTAGEM e GOL
+        # com o mesmo significado — hora de recolocar os dois robôs e a bola.
         if self._duelo:
             if new == duelo.PREPARO:
                 self._sim_ball_pub.publish(Empty())
@@ -288,6 +324,10 @@ class GameMaster(Node):
     def _commit_result(self):
         """Fecha a partida: grava no ranking se o jogador venceu."""
         m = self.engine.match
+
+        if self._x1:
+            self._commit_x1(m)
+            return
 
         if not m.player_won:
             placar = (f'{m.player_rounds}x{m.ai_rounds} rounds' if self._duelo
@@ -310,12 +350,55 @@ class GameMaster(Node):
             f'{m.player_name} venceu em {rules.format_time(m.final_time)} '
             + (f'-> {position}º lugar!' if position else '-> fora do top 10'))
 
+    def _commit_x1(self, m):
+        """Fecha a partida de X1: uma linha com os DOIS nomes no placar.
+
+        Diferente dos outros modos, o que entra não é "o tempo de quem venceu"
+        e sim o confronto inteiro — é o que permite a tela do campeonato mostrar
+        `A (2) 12.4 × (1) 18.9 B`. Partida empatada não entra; quem decide isso
+        é o `insert_match`, não este método, para a regra morar junto do resto
+        das regras.
+        """
+        record = x1.match_record(m, datetime.now().strftime('%Y-%m-%d %H:%M'))
+
+        self._scores, position = x1.insert_match(self._scores, record)
+
+        m.ranked = position > 0
+        m.rank_position = position
+
+        self._save_scores()
+        self._publish_scores()
+
+        if m.winner == x1.EMPATE:
+            self.get_logger().info(
+                f'{m.name_a} {m.rounds_a} x {m.rounds_b} {m.name_b} — '
+                f'empate. Fora do placar.')
+            return
+
+        self.get_logger().info(
+            f'{m.name(m.winner)} venceu {m.rounds_a} x {m.rounds_b} em '
+            f'{x1.format_time(x1.winning_time(record))} '
+            + (f'-> {position}º do dia!' if position else '-> fora do top 10'))
+
     def _build_status(self, now, match):
         status = GameStatus()
         status.state = match.state
         status.player_name = match.player_name
 
-        if self._duelo:
+        if self._x1:
+            # O X1 tem DOIS nomes e a GameStatus só tem um campo de nome. O que
+            # vai nele é o lado A; o lado B viaja no WebSocket, junto do resto do
+            # detalhe. Encher a mensagem de campos novos obrigaria a recompilar o
+            # shared_interfaces — e o C++ inteiro junto — só para a tela mostrar
+            # mais uma coisa.
+            status.player_name = match.name_a
+            status.player_score = match.rounds_a
+            status.ai_score = match.rounds_b
+            status.target_score = self.engine.config.rounds_to_win
+            status.time_limit = self.engine.config.round_limit
+            status.last_scorer = match.last_scorer
+
+        elif self._duelo:
             # O duelo é contado em rounds, não em gols. Cabe na mesma mensagem
             # sem campo novo: "quantos rounds cada um levou" ocupa exatamente o
             # lugar de "quantos gols cada um fez", e o cronômetro é o do turno
@@ -335,7 +418,13 @@ class GameMaster(Node):
 
         status.elapsed = match.elapsed
         status.state_remaining = self.engine.state_remaining(now)
-        status.player_won = match.player_won
+
+        # `player_won` é a pergunta "o visitante ganhou da máquina?", que no X1
+        # não existe: os dois lados são visitantes. Fica False, e quem quer saber
+        # o vencedor lê `x1.winner` no WebSocket. Responder `A venceu` aqui
+        # faria a tela do campeão depender de qual lado a pessoa calhou de pegar.
+        status.player_won = False if self._x1 else match.player_won
+
         status.ranked = match.ranked
         status.rank_position = match.rank_position
         status.difficulty = self._difficulty
@@ -373,13 +462,26 @@ class GameMaster(Node):
 
     def _publish_scores(self):
         msg = HighScoreList()
+
         for item in self._scores:
             entry = HighScore()
-            entry.name = item['name']
-            entry.time = float(item['time'])
-            entry.difficulty = item.get('difficulty', '')
+
+            if self._x1:
+                # A HighScore tem um nome e um tempo; a linha do X1 tem dois de
+                # cada. Achatar é honesto porque este tópico existe para quem
+                # está de fora (log, painel de diagnóstico), não para a tela do
+                # campeonato — essa lê o registro inteiro pelo WebSocket.
+                entry.name = f"{item.get('name_a', '?')} × {item.get('name_b', '?')}"
+                entry.time = float(x1.winning_time(item))
+                entry.difficulty = f"{item.get('score_a', 0)}x{item.get('score_b', 0)}"
+            else:
+                entry.name = item['name']
+                entry.time = float(item['time'])
+                entry.difficulty = item.get('difficulty', '')
+
             entry.date = item.get('date', '')
             msg.entries.append(entry)
+
         self._scores_pub.publish(msg)
 
     # ── Comandos das telas ───────────────────────────────────────────────
@@ -393,9 +495,16 @@ class GameMaster(Node):
                 self.engine.begin_registration(now)
 
             elif kind == 'start':
-                self.engine.start(now, data.get('name', ''))
-                self.get_logger().info(
-                    f'Partida iniciada: {self.engine.match.player_name}')
+                if self._x1:
+                    self.engine.start(now, data.get('name_a', ''),
+                                      data.get('name_b', ''))
+                    m = self.engine.match
+                    self.get_logger().info(
+                        f'X1 iniciado: {m.name_a} × {m.name_b}')
+                else:
+                    self.engine.start(now, data.get('name', ''))
+                    self.get_logger().info(
+                        f'Partida iniciada: {self.engine.match.player_name}')
 
             elif kind == 'abort':
                 self.engine.abort(now)
@@ -404,7 +513,14 @@ class GameMaster(Node):
                 self.engine.toggle_pause(now)
 
             elif kind == 'goal':
-                if self._duelo:
+                if self._x1:
+                    # Sem câmera, ESTE é o caminho normal do gol no X1 — não o
+                    # seguro de quando a visão falha. O operador é a detecção.
+                    scorer = x1.A if data.get('who') == 'a' else x1.B
+                    self.engine.force_goal(now, scorer)
+                    self.get_logger().info(
+                        f'Gol do {self.engine.match.name(scorer)}.')
+                elif self._duelo:
                     # No duelo o gol é sempre de quem está com o volante — não
                     # há como o operador creditar o turno errado.
                     driver = self.engine.match.driver
@@ -421,6 +537,10 @@ class GameMaster(Node):
                 # turno sem gol em vez de obrigar a fila a esperar o teto.
                 self.engine.skip_turn(now)
                 self.get_logger().info('Turno encerrado sem gol pelo operador.')
+
+            elif kind == 'skip' and self._x1:
+                self.engine.skip_round(now)
+                self.get_logger().info('Round encerrado sem gol pelo operador.')
 
             elif kind == 'difficulty':
                 msg = String()
@@ -454,6 +574,43 @@ class GameMaster(Node):
             'scores': self._scores,
             'mode': self._mode,
             **(self._duelo_snapshot() if self._duelo else {}),
+            **({'x1': self._x1_snapshot()} if self._x1 else {}),
+        }
+
+    def _x1_snapshot(self):
+        """O detalhe que só o X1 tem, aninhado em vez de espalhado.
+
+        O duelo espalha as chaves dele na raiz por razão histórica. Aqui vai
+        aninhado de propósito: o X1 tem `name_a`/`name_b`/`score_a`… e a raiz já
+        tem `player_name`/`player_score`, que no X1 são o lado A. Duas grafias do
+        mesmo dado na mesma altura é a receita para a tela ler a errada num
+        estado e a certa em outro.
+        """
+        m = self.engine.match
+        c = self.engine.config
+
+        return {
+            'name_a': m.name_a,
+            'name_b': m.name_b,
+            'score_a': m.rounds_a,
+            'score_b': m.rounds_b,
+            'round_number': m.round_number,
+            'rounds_to_win': c.rounds_to_win,
+            'max_rounds': c.max_rounds,
+            'round_limit': c.round_limit,
+            'best_a': _num(m.best(x1.A)),
+            'best_b': _num(m.best(x1.B)),
+            'total_a': round(m.total(x1.A), 2),
+            'total_b': round(m.total(x1.B), 2),
+            'winner': m.winner,
+            'rounds': [
+                {
+                    'number': r.number,
+                    'time': _num(r.time),
+                    'winner': r.winner,
+                }
+                for r in m.rounds
+            ],
         }
 
     def _duelo_snapshot(self):
@@ -527,11 +684,13 @@ class GameMaster(Node):
         asyncio.set_event_loop(self._loop)
 
         app = web.Application()
-        # No duelo a raiz serve a tela do duelo: o endereço que o operador
-        # decorou continua sendo o mesmo, e é ele que vai na TV.
+        # A raiz serve a tela DO MODO: o endereço que o operador decorou
+        # continua sendo o mesmo, e é ele que vai na TV.
         app.router.add_get('/', self._serve(
-            'duelo.html' if self._duelo else 'tv.html'))
+            'x1.html' if self._x1 else 'duelo.html' if self._duelo
+            else 'tv.html'))
         app.router.add_get('/duelo', self._serve('duelo.html'))
+        app.router.add_get('/x1', self._serve('x1.html'))
         app.router.add_get('/operador', self._serve('operator.html'))
         app.router.add_get('/vss.css', self._serve('vss.css'))
         # Fontes auto-hospedadas. A feira não tem rede garantida e a

@@ -20,7 +20,38 @@
        ninguém lê a linha, e o operador apertava de novo o que já estava.
      · Apagar o ranking pede confirmação NA PRÓPRIA TELA, em dois toques.
        O `confirm()` do navegador trava a janela inteira e, num quiosque em
-       tela cheia, isso é pior que o acidente que ele previne.               */
+       tela cheia, isso é pior que o acidente que ele previne.
+
+     ── Três modos, UMA página ────────────────────────────────────────────────
+
+     O árbitro serve este mesmo arquivo rodando em `classico`, `duelo` ou `x1`,
+     e o snapshot do WebSocket diz qual é em `mode`. A página é uma só, com os
+     blocos de cada modo marcados por classe (`.so-x1` aparece só no X1,
+     `.sem-x1` some nele) e UM `render()` que ramifica no fim. Duas páginas
+     paralelas seriam mais fáceis de escrever e mais caras de manter: a
+     manutenção aqui é de uma pessoa só, e todo conserto teria que ser feito
+     duas vezes.
+
+     No X1 não há IA — a dificuldade do Franky some, os dois botões de gol
+     viram "gol do A" e "gol do B", e o ranking vira o placar do campeonato,
+     com uma linha por partida.
+
+     ── A REGRA DO DONO: o lado B é sempre mais ESCURO que o lado A ───────────
+
+     Vale no placar do campeonato, no placar corrente e nos rótulos dos botões.
+     A é o tom de destaque, B é o tom rebaixado, para o olho ler A primeiro e
+     os dois nunca se confundirem. Isto é DECISÃO DO DONO, não descuido: pode
+     parecer desbalanceado à primeira vista e NÃO deve ser "consertado" depois.
+
+     As duas cores são as dos robôs, e são as mesmas da `x1.html` — as duas
+     telas ficam lado a lado no estande e têm que se reconhecer. A é o
+     visitante (ciano), B é o magenta da marca rebaixado em luminosidade.     */
+
+  :root {
+    /* Idênticos aos da `x1.html`. Se um dia mudarem, mudam nos dois. */
+    --lado-a: var(--ciano);
+    --lado-b: #A03BAE;      /* o magenta da marca rebaixado — ver acima */
+  }
 
   body {
     padding: var(--sp-4);
@@ -34,6 +65,12 @@
 
   .head { margin-bottom: var(--sp-4); }
   .head .vss-hint { margin-top: var(--sp-1); }
+  .head .titulo { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+
+  /* O `[hidden]` do navegador perde para o `display:inline-flex` do `.vss-btn`
+     e para o `display:flex` das linhas de botão — sem o `!important` os blocos
+     do modo errado continuariam na tela. */
+  [hidden] { display: none !important; }
 
   /* ── Estado, sempre visível ───────────────────────────────────────────── */
 
@@ -66,6 +103,45 @@
   .score-now .visitante { color: var(--visitante); }
   .score-now .x { color: var(--muted); }
 
+  /* O placar do X1 carrega NOME, rounds, NOME na mesma linha — é a leitura que
+     o operador precisa fazer de relance. Numerais na Poppins 900 (a mesma
+     `--num-family` do vss.css e da x1.html) e não na display: a display tem
+     numeral de largura irregular e o placar dança a cada gol. */
+  .score-x1 {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .score-x1 .nome {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .score-x1 .pts {
+    font-family: var(--num-family);
+    font-weight: 900;
+    font-size: var(--fs-2xl);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .score-x1 .x { color: var(--muted); font-size: var(--fs-lg); }
+
+  .score-x1 .a { color: var(--lado-a); }
+  /* A regra do dono, aplicada ao placar corrente. */
+  .score-x1 .b { color: var(--lado-b); opacity: .88; }
+
+  .round-now {
+    font-size: var(--fs-sm);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
   .clock-now {
     margin-left: auto;
     font-size: var(--fs-2xl);
@@ -77,6 +153,19 @@
 
   .card + .card { margin-top: var(--sp-3); }
   .vss-card { margin-bottom: var(--sp-3); }
+
+  .campos { display: flex; gap: var(--sp-2); }
+  .campos > label { flex: 1; min-width: 0; }
+  .campos .papel {
+    display: block;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: var(--sp-1);
+  }
+  .campos .papel.a { color: var(--lado-a); }
+  .campos .papel.b { color: var(--lado-b); }
 
   /* ── Controle segmentado ──────────────────────────────────────────────── */
 
@@ -100,6 +189,12 @@
     box-shadow: inset 0 -2px 0 var(--ciano);
   }
 
+  /* ── Botões de lado ───────────────────────────────────────────────────── */
+
+  /* `.visitante` do vss.css já é o lado A. O B ganha o magenta rebaixado, para
+     o botão combinar com o nome que aparece no placar logo acima. */
+  .vss-btn.lado-b { border-color: var(--magenta-45); color: var(--lado-b); }
+
   /* ── Confirmação em dois toques ───────────────────────────────────────── */
 
   .confirm-row { display: none; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
@@ -110,6 +205,44 @@
 
   .vss-rank-row { font-size: var(--fs-md); }
   .empty { color: var(--muted); font-size: var(--fs-sm); padding: var(--sp-2) 0; }
+
+  /* ── Placar do campeonato ─────────────────────────────────────────────────
+     Uma linha por PARTIDA, com os dois nomes:
+
+         1  FERNANDO (2) 0:12.4  ×  0:18.9 (1) MARIANA
+
+     Quatro colunas em vez das três do ranking normal — daí o seletor por
+     `#rank.x1`, que não alcança as outras telas. Os nomes de classe são os
+     mesmos da `x1.html` de propósito. */
+
+  #rank.x1 .vss-rank-row { grid-template-columns: 2.2em 1fr auto 1fr; }
+
+  .par { display: flex; align-items: baseline; gap: .5em; min-width: 0; }
+  .par.a { justify-content: flex-end; color: var(--lado-a); }
+  .par.b { justify-content: flex-start; color: var(--lado-b); }
+
+  .par .nome {
+    font-weight: 700;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .par .pts, .par .t {
+    font-style: normal;
+    font-family: var(--num-family);
+    font-variant-numeric: tabular-nums;
+  }
+  .par .pts { font-weight: 900; }
+  .par .t   { font-weight: 700; color: var(--text); }
+
+  /* Até o TEMPO do B é rebaixado: com o número na cor do texto dos dois lados
+     a linha voltaria a ser simétrica e o olho perderia o ponto de entrada. É a
+     regra do dono aplicada até o último elemento da linha — igual à x1.html. */
+  .par.b .t { color: var(--text-dim); opacity: .82; }
+  .par.b .nome, .par.b .pts { opacity: .88; }
+
+  .vs { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -119,7 +252,10 @@
 <div class="vss-bunting" style="margin:calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4)"></div>
 
 <div class="head">
-  <h1>Painel do operador</h1>
+  <div class="titulo">
+    <h1>Painel do operador</h1>
+    <span class="vss-badge visitante so-x1" id="modeBadge" hidden>X1</span>
+  </div>
   <p class="vss-hint">
     A TV está em <a href="/" target="_blank" style="color:var(--ciano)">/</a> —
     abra numa segunda janela, em tela cheia.
@@ -130,9 +266,14 @@
 <div class="vss-card status">
   <div class="status-line">
     <span class="vss-badge" id="stateBadge"><span class="vss-dot"></span> —</span>
-    <span class="score-now">
+
+    <span class="score-now sem-x1" id="scoreClassico">
       <span class="ia" id="sAi">0</span><span class="x"> × </span><span class="visitante" id="sPlayer">0</span>
     </span>
+
+    <span class="score-now score-x1 so-x1" id="scoreX1" hidden></span>
+    <span class="round-now so-x1" id="roundNow" hidden></span>
+
     <span class="clock-now" id="sClock">0:00.0</span>
   </div>
   <p class="vss-hint" id="whoLine">Nenhum jogador.</p>
@@ -141,34 +282,74 @@
 <!-- NOVO JOGADOR ────────────────────────────────────────────────────────── -->
 <div class="vss-card">
   <h2>Novo jogador</h2>
-  <label class="vss-sr" for="name">Nome do visitante</label>
-  <input type="text" id="name" class="vss-input nome"
-         placeholder="Nome do visitante" maxlength="14" autocomplete="off" autofocus>
+
+  <div class="sem-x1" id="campoUm">
+    <label class="vss-sr" for="name">Nome do visitante</label>
+    <input type="text" id="name" class="vss-input nome"
+           placeholder="Nome do visitante" maxlength="14" autocomplete="off" autofocus>
+  </div>
+
+  <div class="campos so-x1" id="camposDois" hidden>
+    <label>
+      <span class="papel a">Jogador A</span>
+      <input type="text" id="nameA" class="vss-input nome"
+             placeholder="Jogador A" maxlength="14" autocomplete="off">
+    </label>
+    <label>
+      <span class="papel b">Jogador B</span>
+      <input type="text" id="nameB" class="vss-input nome"
+             placeholder="Jogador B" maxlength="14" autocomplete="off">
+    </label>
+  </div>
+
   <div class="vss-btns" style="margin-top:var(--sp-3)">
     <button class="vss-btn primary" id="btnStart">Começar <span class="vss-kbd">Enter</span></button>
+    <button class="vss-btn ghost so-x1" id="btnRegister" hidden>Chamar no telão <span class="vss-kbd">R</span></button>
     <button class="vss-btn" id="btnAbort">Cancelar</button>
   </div>
-  <p class="vss-hint">Aparece em caixa alta no telão — até 14 letras.</p>
+
+  <p class="vss-hint sem-x1" id="hintNomeUm">Aparece em caixa alta no telão — até 14 letras.</p>
+  <p class="vss-hint so-x1" id="hintNomeDois" hidden>
+    Os dois aparecem em caixa alta no telão — até 14 letras cada.
+    <strong>Enter</strong> no segundo campo já começa a partida.
+  </p>
 </div>
 
 <!-- DURANTE A PARTIDA ───────────────────────────────────────────────────── -->
 <div class="vss-card">
   <h2>Durante a partida</h2>
-  <div class="vss-btns">
+
+  <div class="vss-btns sem-x1" id="golsClassico">
     <button class="vss-btn visitante" id="btnGoalPlayer">Gol do jogador <span class="vss-kbd">1</span></button>
     <button class="vss-btn ia" id="btnGoalAi">Gol do Franky <span class="vss-kbd">2</span></button>
   </div>
+
+  <div class="vss-btns so-x1" id="golsX1" hidden>
+    <button class="vss-btn visitante" id="btnGoalA">Gol do A <span class="vss-kbd">1</span></button>
+    <button class="vss-btn lado-b" id="btnGoalB">Gol do B <span class="vss-kbd">2</span></button>
+  </div>
+  <div class="vss-btns so-x1" id="pulaX1" hidden style="margin-top:var(--sp-2)">
+    <button class="vss-btn" id="btnSkip">Round sem gol <span class="vss-kbd">3</span></button>
+  </div>
+
   <div class="vss-btns" style="margin-top:var(--sp-2)">
     <button class="vss-btn" id="btnPause">Pausar <span class="vss-kbd">espaço</span></button>
   </div>
-  <p class="vss-hint">
+
+  <p class="vss-hint sem-x1" id="hintDuranteClassico">
     Os botões de gol são o <strong>seguro</strong>: valem quando a visão não
     enxergar o lance. Funcionam mesmo com a detecção automática ligada.
+  </p>
+  <p class="vss-hint so-x1" id="hintDuranteX1" hidden>
+    Aqui o botão de gol não é seguro, é o <strong>apito</strong>: sem câmera,
+    você é a única detecção que existe. O round acaba no primeiro gol.
+    <strong>Round sem gol</strong> é para quando a bola sumiu ou um robô travou.
   </p>
 </div>
 
 <!-- DIFICULDADE ─────────────────────────────────────────────────────────── -->
-<div class="vss-card">
+<!-- Some no X1: não há IA para regular. -->
+<div class="vss-card sem-x1" id="cardDificuldade">
   <h2>Dificuldade do Franky 2.2</h2>
   <div class="segmented" role="group" aria-label="Dificuldade do Franky 2.2">
     <button class="vss-btn" data-diff="FACIL"   aria-pressed="false">Fácil</button>
@@ -180,7 +361,7 @@
 
 <!-- RANKING ─────────────────────────────────────────────────────────────── -->
 <div class="vss-card">
-  <h2>Ranking</h2>
+  <h2 id="rankTitle">Ranking</h2>
   <div class="vss-rank" id="rank"></div>
 
   <div class="vss-btns" style="margin-top:var(--sp-3)">
@@ -188,7 +369,7 @@
   </div>
 
   <div class="confirm-row" id="clearConfirm">
-    <span class="q">Apagar todos os tempos? Não dá para desfazer.</span>
+    <span class="q" id="clearQ">Apagar todos os tempos? Não dá para desfazer.</span>
     <button class="vss-btn danger sm" id="btnClearYes">Apagar</button>
     <button class="vss-btn ghost sm" id="btnClearNo">Cancelar</button>
   </div>
@@ -201,9 +382,17 @@
 <script>
 'use strict';
 
-let ws = null, state = null;
-const nameInput = document.getElementById('name');
 const $ = (id) => document.getElementById(id);
+
+let ws = null, state = null;
+
+// Qual modo já está montado na tela. Existe para `aplicarModo` mexer no DOM uma
+// vez só, e não trinta vezes por segundo.
+let modoMontado = null;
+
+const nameInput = $('name');
+const nameAInput = $('nameA');
+const nameBInput = $('nameB');
 
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
@@ -225,10 +414,23 @@ function fmt(s) {
   return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`;
 }
 
+// O X1 tem tempo que legitimamente não existe: `best_b` é nulo enquanto o B não
+// venceu round nenhum. O traço é a mesma resposta que a x1.html dá no telão —
+// `--:--` ali pareceria um cronômetro zerado esperando começar.
+function fmtT(s) {
+  if (s == null || isNaN(s)) return '—';
+  const m = Math.floor(s / 60);
+  return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`;
+}
+
 const LABEL = {
   IDLE: 'aguardando', REGISTRO: 'registrando', CONTAGEM: 'contagem',
   JOGANDO: 'jogando', GOL: 'gol', FIM: 'resultado', PAUSA: 'pausado',
 };
+
+// O X1 tem um estado a mais. Mapa próprio, e não uma entrada nova no `LABEL`,
+// para o duelo — que também tem `ROUND` — continuar exatamente como está.
+const LABEL_X1 = Object.assign({}, LABEL, { ROUND: 'fim do round' });
 
 function escapeHtml(t) {
   const d = document.createElement('div');
@@ -236,18 +438,74 @@ function escapeHtml(t) {
   return d.innerHTML;
 }
 
+function ehX1() { return !!state && state.mode === 'x1'; }
+
+// O bloco do X1 pode não vir (modo errado, snapshot antigo); nunca desreferencie
+// direto.
+function x1() { return (state && state.x1) || {}; }
+
+/* ── Montagem por modo ────────────────────────────────────────────────────
+   Só o que é ESTRUTURA: o que aparece, o que some e os textos fixos. O que
+   muda a cada quadro fica no `render()`. */
+
+function aplicarModo(x1mode) {
+  if (modoMontado === x1mode) return;
+  modoMontado = x1mode;
+
+  for (const el of document.querySelectorAll('.so-x1'))  el.hidden = !x1mode;
+  for (const el of document.querySelectorAll('.sem-x1')) el.hidden = x1mode;
+
+  $('rankTitle').textContent = x1mode ? 'Placar do campeonato' : 'Ranking';
+  $('btnClear').textContent  = x1mode ? 'Apagar o placar' : 'Apagar ranking';
+  $('clearQ').textContent = x1mode
+    ? 'Apagar todas as partidas? Não dá para desfazer.'
+    : 'Apagar todos os tempos? Não dá para desfazer.';
+
+  // O primeiro campo já pronto para digitar: no X1 são dois, e o cursor tem
+  // que cair no A. O `autofocus` do HTML aponta para o campo do modo normal.
+  if (x1mode && nameAInput) nameAInput.focus();
+}
+
+/* ── Render ───────────────────────────────────────────────────────────────
+   Um só, com ramificação no meio. O topo (etiqueta de estado, cronômetro) e o
+   rodapé (pausa, placar salvo) valem para os três modos. */
+
 function render() {
   if (!state) return;
 
+  const x1mode = ehX1();
+  aplicarModo(x1mode);
+
   const badge = $('stateBadge');
+  const rotulo = (x1mode ? LABEL_X1 : LABEL)[state.state] || state.state || '—';
   badge.innerHTML = `<span class="vss-dot${state.state === 'JOGANDO' ? ' pulsing' : ''}"></span> ` +
-                    escapeHtml(LABEL[state.state] || state.state);
+                    escapeHtml(rotulo);
   badge.className = 'vss-badge ' +
     (state.state === 'JOGANDO' ? 'live' : state.state === 'PAUSA' ? 'warn' : '');
 
+  $('sClock').textContent = fmt(state.elapsed);
+
+  if (x1mode) renderX1(); else renderClassico();
+
+  // A pausa é a mesma ação nos três modos. No X1 o anúncio do round também
+  // pausa: é onde o operador recoloca os robôs, e é o momento em que ele mais
+  // precisa de tempo.
+  const pausavel = x1mode
+    ? ['CONTAGEM', 'JOGANDO', 'GOL', 'ROUND', 'PAUSA']
+    : ['JOGANDO', 'GOL', 'CONTAGEM', 'PAUSA'];
+
+  $('btnPause').disabled = !pausavel.includes(state.state);
+  $('btnPause').innerHTML = (state.state === 'PAUSA' ? 'Continuar' : 'Pausar') +
+                            ' <span class="vss-kbd">espaço</span>';
+
+  renderPlacarSalvo(x1mode);
+}
+
+/* ── Modos com IA: clássico e duelo ─────────────────────────────────────── */
+
+function renderClassico() {
   $('sAi').textContent = state.ai_score;
   $('sPlayer').textContent = state.player_score;
-  $('sClock').textContent = fmt(state.elapsed);
 
   // O relógio fica laranja no mesmo limiar da TV, para os dois contarem a
   // mesma história quando o operador olha de um para o outro.
@@ -270,28 +528,166 @@ function render() {
   const running = ['JOGANDO', 'GOL', 'PAUSA'].includes(state.state);
   $('btnGoalPlayer').disabled = !running;
   $('btnGoalAi').disabled = !running;
-  $('btnPause').disabled = !['JOGANDO', 'GOL', 'CONTAGEM', 'PAUSA'].includes(state.state);
-  $('btnPause').innerHTML = (state.state === 'PAUSA' ? 'Continuar' : 'Pausar') +
-                            ' <span class="vss-kbd">espaço</span>';
+}
 
+/* ── X1 ───────────────────────────────────────────────────────────────────── */
+
+function nomeA() { return x1().name_a || state.player_name || ''; }
+function nomeB() { return x1().name_b || ''; }
+
+function renderX1() {
+  const m = x1();
+  const a = nomeA(), b = nomeB();
+
+  // Melhor de três = `rounds_to_win * 2 - 1`. É o mesmo número que a x1.html
+  // imprime, derivado do mesmo campo — nenhuma das duas telas chuta "3".
+  const melhorDe = (m.rounds_to_win || 2) * 2 - 1;
+
+  // Assinatura antes de redesenhar, como no ranking: reconstruir o placar a
+  // cada quadro cancelaria a seleção de texto do operador.
+  const box = $('scoreX1');
+  const sig = [a, b, m.score_a, m.score_b].join('|');
+  if (box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    box.innerHTML =
+      `<span class="nome a">${escapeHtml(a || 'Jogador A')}</span>` +
+      `<span class="pts a">${m.score_a ?? 0}</span>` +
+      `<span class="x">×</span>` +
+      `<span class="pts b">${m.score_b ?? 0}</span>` +
+      `<span class="nome b">${escapeHtml(b || 'Jogador B')}</span>`;
+  }
+
+  $('roundNow').textContent = `round ${m.round_number || 1} de ${melhorDe}`;
+
+  // Laranja a 15 s do TETO DO ROUND, e não do tempo total: no X1 o que acaba é
+  // o round. `state_remaining` já vem resolvido pelo árbitro; a conta local é
+  // só para o caso de ele não vir.
+  let falta = state.state_remaining;
+  if (falta == null || isNaN(falta)) {
+    falta = Math.max(0, (m.round_limit || state.time_limit || 0) - (state.elapsed || 0));
+  }
+  $('sClock').classList.toggle('warn', state.state === 'JOGANDO' && falta < 15);
+
+  $('whoLine').textContent = linhaX1(m, a, b);
+
+  rotular($('btnGoalA'), a ? `Gol de ${a}` : 'Gol do A', '1');
+  rotular($('btnGoalB'), b ? `Gol de ${b}` : 'Gol do B', '2');
+
+  // Só durante o round. Fora dele não existe gol para apitar, e um clique
+  // perdido em CONTAGEM viraria um gol no round que ainda nem começou.
+  const jogando = state.state === 'JOGANDO';
+  $('btnGoalA').disabled = !jogando;
+  $('btnGoalB').disabled = !jogando;
+  $('btnSkip').disabled = !jogando;
+}
+
+// Rótulo com o atalho impresso ao lado. Só reescreve quando o texto muda: o
+// nome do visitante só muda uma vez por partida.
+function rotular(btn, texto, tecla) {
+  if (btn.dataset.lbl === texto) return;
+  btn.dataset.lbl = texto;
+  btn.innerHTML = escapeHtml(texto) + ` <span class="vss-kbd">${tecla}</span>`;
+}
+
+// A linha de apoio, embaixo do placar. Responde o que o operador perguntaria em
+// cada estado — e nunca devolve um nome vazio, um `null` ou um `NaN`.
+function linhaX1(m, a, b) {
+  const quem = (lado) => (lado === 'A' ? (a || 'jogador A') : (b || 'jogador B'));
+
+  if (state.state === 'IDLE') return 'Nenhuma partida. Chame os dois próximos.';
+  if (state.state === 'REGISTRO') return 'Anotando os nomes — Enter no campo do B começa.';
+
+  if (state.state === 'FIM') {
+    const placar = `${m.score_a ?? 0}×${m.score_b ?? 0}`;
+
+    if (m.winner === 'A' || m.winner === 'B') {
+      return `Venceu ${quem(m.winner)} (${placar})` +
+             (state.ranked && state.rank_position
+               ? ` — ${state.rank_position}º no placar do dia` : '');
+    }
+    return `Empate (${placar}) — partida empatada não entra no placar.`;
+  }
+
+  const rounds = m.rounds || [];
+  const ultimo = rounds.length ? rounds[rounds.length - 1] : null;
+
+  if ((state.state === 'GOL' || state.state === 'ROUND') && ultimo) {
+    const n = ultimo.number || rounds.length;
+    return ultimo.winner === 'A' || ultimo.winner === 'B'
+      ? `Round ${n}: ${quem(ultimo.winner)} em ${fmtT(ultimo.time)}`
+      : `Round ${n}: sem gol, ninguém pontua.`;
+  }
+
+  return `Melhor round — ${quem('A')}: ${fmtT(m.best_a)} · ${quem('B')}: ${fmtT(m.best_b)}`;
+}
+
+/* ── Ranking / placar do campeonato ─────────────────────────────────────── */
+
+function renderPlacarSalvo(x1mode) {
   // Mesma guarda da TV. Aqui não há animação para quebrar, mas reconstruir a
   // lista 30 vezes por segundo cancela qualquer seleção de texto do operador —
   // que é justamente o que ele faz quando quer copiar um nome.
   const rank = $('rank');
-  const rankSig = JSON.stringify(state.scores || []);
-  if (rank.dataset.sig !== rankSig) {
-    rank.dataset.sig = rankSig;
-    rank.innerHTML = (state.scores || []).map((e, i) =>
-      `<div class="vss-rank-row">
-         <span class="vss-rank-pos">${i + 1}</span>
-         <span class="vss-rank-name">${escapeHtml(e.name)}</span>
-         <span class="vss-rank-time">${fmt(e.time)}</span>
-       </div>`
-    ).join('') || '<div class="empty">vazio</div>';
-  }
+  const marca = state.ranked ? (state.rank_position || 0) : 0;
+  const sig = JSON.stringify([x1mode, state.scores || [], marca]);
+  if (rank.dataset.sig === sig) return;
+  rank.dataset.sig = sig;
+
+  rank.classList.toggle('x1', x1mode);
+
+  const lista = state.scores || [];
+  rank.innerHTML = lista.map((e, i) =>
+    x1mode ? linhaCampeonato(e, i, marca) : linhaRanking(e, i)
+  ).join('') || `<div class="empty">${x1mode ? 'nenhuma partida decidida ainda' : 'vazio'}</div>`;
 }
 
+function linhaRanking(e, i) {
+  return `<div class="vss-rank-row">
+            <span class="vss-rank-pos">${i + 1}</span>
+            <span class="vss-rank-name">${escapeHtml(e.name)}</span>
+            <span class="vss-rank-time">${fmt(e.time)}</span>
+          </div>`;
+}
+
+// `1  FERNANDO (2) 0:12.4  ×  0:18.9 (1) MARIANA` — o B espelhado, do centro
+// para fora, para os dois tempos ficarem vizinhos do `×`. A partida recém-
+// jogada é marcada por POSIÇÃO e não por nome: dois visitantes podem se chamar
+// igual, e a posição já vem resolvida pelo árbitro.
+function linhaCampeonato(e, i, marca) {
+  const realce = marca === i + 1 ? ' highlight' : '';
+
+  return `<div class="vss-rank-row${realce}">
+            <span class="vss-rank-pos">${i + 1}</span>
+            <span class="par a">
+              <span class="nome">${escapeHtml(e.name_a || 'Jogador A')}</span>
+              <i class="pts">(${e.score_a ?? 0})</i>
+              <i class="t">${fmtT(e.time_a)}</i>
+            </span>
+            <span class="vs">×</span>
+            <span class="par b">
+              <i class="t">${fmtT(e.time_b)}</i>
+              <i class="pts">(${e.score_b ?? 0})</i>
+              <span class="nome">${escapeHtml(e.name_b || 'Jogador B')}</span>
+            </span>
+          </div>`;
+}
+
+/* ── Ações ────────────────────────────────────────────────────────────────── */
+
 function startMatch() {
+  if (ehX1()) {
+    send({
+      type: 'start',
+      name_a: nameAInput.value.trim(),
+      name_b: nameBInput.value.trim(),
+    });
+    nameAInput.value = '';
+    nameBInput.value = '';
+    nameAInput.blur();
+    nameBInput.blur();
+    return;
+  }
+
   send({ type: 'start', name: nameInput.value.trim() });
   nameInput.value = '';
   nameInput.blur();
@@ -302,6 +698,14 @@ $('btnAbort').onclick = () => send({ type: 'abort' });
 $('btnPause').onclick = () => send({ type: 'pause' });
 $('btnGoalPlayer').onclick = () => send({ type: 'goal', who: 'player' });
 $('btnGoalAi').onclick = () => send({ type: 'goal', who: 'ai' });
+
+$('btnGoalA').onclick = () => send({ type: 'goal', who: 'a' });
+$('btnGoalB').onclick = () => send({ type: 'goal', who: 'b' });
+$('btnSkip').onclick = () => send({ type: 'skip' });
+
+// Põe o telão na tela "quem vai encarar quem" enquanto o operador digita os
+// dois nomes. É o que dá assunto para a fila enquanto ele datilografa.
+$('btnRegister').onclick = () => send({ type: 'register' });
 
 // Apagar o ranking: dois toques, sem modal do navegador.
 $('btnClear').onclick = () => $('clearConfirm').classList.add('on');
@@ -319,13 +723,40 @@ nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); startMatch(); }
 });
 
-// Atalhos para o operador não precisar mirar no botão com fila esperando.
-// Ignorados enquanto o cursor está no campo de nome.
-window.addEventListener('keydown', (e) => {
-  if (document.activeElement === nameInput) return;
+// Enter no A pula para o B; Enter no B começa. É a ordem em que os dois
+// visitantes falam o nome, e o operador nunca tira a mão do teclado.
+nameAInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); nameBInput.focus(); }
+});
+nameBInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); startMatch(); }
+});
 
-  if (e.key === '1') { e.preventDefault(); send({ type: 'goal', who: 'player' }); }
-  if (e.key === '2') { e.preventDefault(); send({ type: 'goal', who: 'ai' }); }
+function digitando() {
+  const el = document.activeElement;
+  return el === nameInput || el === nameAInput || el === nameBInput;
+}
+
+// Atalhos para o operador não precisar mirar no botão com fila esperando.
+// Ignorados enquanto o cursor está em qualquer um dos campos de nome.
+window.addEventListener('keydown', (e) => {
+  if (digitando()) return;
+
+  const x1mode = ehX1();
+
+  if (e.key === '1') {
+    e.preventDefault();
+    send(x1mode ? { type: 'goal', who: 'a' } : { type: 'goal', who: 'player' });
+  }
+  if (e.key === '2') {
+    e.preventDefault();
+    send(x1mode ? { type: 'goal', who: 'b' } : { type: 'goal', who: 'ai' });
+  }
+  if (e.key === '3' && x1mode) { e.preventDefault(); send({ type: 'skip' }); }
+  if ((e.key === 'r' || e.key === 'R') && x1mode) {
+    e.preventDefault();
+    send({ type: 'register' });
+  }
   if (e.key === ' ') { e.preventDefault(); send({ type: 'pause' }); }
 });
 

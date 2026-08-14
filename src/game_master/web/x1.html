@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carrossel Caipira — X1</title>
+<link rel="stylesheet" href="/vss.css">
+<style>
+  /* ═══ TELÃO DO X1 ═════════════════════════════════════════════════════════
+
+     Duas pessoas, dois robôs, melhor de três. Sem IA e sem câmera: quem apita
+     o gol é o operador. A tela responde de dez metros a uma pergunta só —
+     QUEM está ganhando a partida, e em quanto tempo.
+
+     O que organiza o desenho:
+
+     · A FAIXA DE PLACAR (nome, rounds, nome) fica no mesmo pixel em todas as
+       telas de partida. É a única coisa que persiste do apito ao resultado, e
+       é ela que conta a história — o olho que a achou uma vez não procura de
+       novo. Mesma decisão da `duelo.html`.
+     · O número grande é o CRONÔMETRO, não o placar de rounds: o round acaba no
+       primeiro gol, então o que está em disputa a cada instante é tempo.
+     · Todo estado está escrito, não só colorido. Ninguém no ginásio vai
+       aprender um código de cor durante a partida.
+
+     ── A REGRA DO DONO: o lado B é sempre mais ESCURO que o lado A ───────────
+
+     Vale no placar do campeonato, no placar da partida e nos nomes. A ideia é
+     que o olho leia o lado A primeiro e que os dois lados NUNCA se confundam:
+     A é o tom de destaque, B é o tom rebaixado. Isto é decisão do dono, não
+     descuido — pode parecer desbalanceado à primeira vista e NÃO deve ser
+     "consertado" depois.
+
+     As duas cores não são inventadas: são as dos dois robôs. O `x1.py` diz que
+     A ataca a esquerda, e no `rules.py` a bola no gol da esquerda é ponto do
+     visitante — logo A é o robô do visitante (ciano) e B é o outro (magenta).
+     Manter a cor do robô ajuda cada pessoa a achar o SEU no campo. O magenta
+     entra rebaixado para obedecer à regra acima: mesmo matiz, luminosidade
+     menor. Medido sobre o fundo do palco: A fica em ~9:1 de contraste e B em
+     ~3.3:1 — hierarquia óbvia, e B ainda passa o mínimo de texto grande.
+
+     Numerais em Poppins 900, não na Advent Pro: a display tem numeral de
+     largura irregular e o cronômetro dança a cada décimo. Decisão já tomada na
+     `duelo.html`, herdada aqui sem rediscussão.                              */
+
+  :root {
+    --digit: var(--font);
+
+    --lado-a: var(--ciano);
+    --lado-b: #A03BAE;      /* o magenta da marca rebaixado — ver acima */
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+
+  .screen {
+    position: relative;
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    padding: 3vh 3.5vw;
+  }
+  .screen.on { display: flex; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    gap: 1.4vw;
+    padding-bottom: 1.6vh;
+    border-bottom: 1px solid var(--line);
+    flex: none;
+  }
+  .top .vss-brand { font-size: var(--fs-tv-brand); }
+  .top .vss-badge { margin-left: auto; font-size: var(--fs-tv-label); }
+
+  /* ── A faixa de placar, presente em todas as telas de partida ─────────── */
+
+  .placar {
+    flex: none;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 2vw;
+    padding: 1.6vh 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .placar .lado { display: flex; align-items: center; gap: 1vw; }
+  .placar .lado.dir { justify-content: flex-end; }
+
+  .quem {
+    font-size: var(--fs-tv-name);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 26vw;
+  }
+  .quem.a { color: var(--lado-a); }
+  .quem.b { color: var(--lado-b); }
+  .quem.vazio { color: var(--muted); font-style: italic; font-weight: 600; }
+
+  .rnum {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(30px, 4.2vw, 78px);
+    line-height: .9;
+  }
+  .rnum.a { color: var(--lado-a); }
+  .rnum.b { color: var(--lado-b); }
+
+  .placar .meio {
+    text-align: center;
+    font-size: var(--fs-tv-label);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .16em;
+    white-space: nowrap;
+  }
+
+  /* ── Corpo, comum a quase tudo ────────────────────────────────────────── */
+
+  .corpo {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 0;
+  }
+
+  .rotulo {
+    font-size: var(--fs-tv-label);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .16em;
+  }
+
+  .relogio {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-tv-score);
+    line-height: .92;
+    margin-top: .6vh;
+  }
+  /* Faltam menos de 15 s para o teto do round: o laranja é o aviso do sistema
+     inteiro, e o pisca lento é o que faz a torcida olhar. Mesma ideia da
+     `duelo.html`, com o limiar do X1 (round longo, aviso mais cedo). */
+  .relogio.warn { color: var(--laranja); animation: tick 1s steps(2) infinite; }
+  @keyframes tick { 50% { opacity: .45; } }
+
+  .barra {
+    flex: none;
+    height: 1vh;
+    background: rgba(255, 255, 255, .06);
+    border-radius: var(--r-full);
+    overflow: hidden;
+    margin-top: 2.6vh;
+    width: 62vw;
+  }
+  .barra > i {
+    display: block;
+    height: 100%;
+    background: var(--gradiente);
+    transition: width 120ms linear;
+  }
+  .barra.warn > i { background: var(--laranja); }
+
+  .titulo {
+    font-size: var(--fs-tv-call);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 1.02;
+  }
+  .titulo em {
+    font-style: normal;
+    background: var(--gradiente-vivo);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  .contagem {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-tv-huge);
+    line-height: 1;
+    animation: pop var(--dur-slow) var(--ease-pop);
+  }
+  @keyframes pop { from { transform: scale(.55); opacity: 0; } }
+
+  .grande {
+    font-size: var(--fs-tv-huge);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 1;
+    animation: slam var(--dur-slow) var(--ease-pop);
+  }
+  @keyframes slam { from { transform: scale(2.1); opacity: 0; filter: blur(14px); } }
+
+  .dizer {
+    margin-top: 2.2vh;
+    font-size: var(--fs-tv-body);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+  }
+  .dizer b {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-tv-name);
+    color: var(--text);
+    margin-left: .6vw;
+  }
+  .dizer .a { color: var(--lado-a); }
+  .dizer .b { color: var(--lado-b); }
+
+  /* ── Registro: os dois lugares ainda vazios ───────────────────────────── */
+
+  .lugares {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 2.5vw;
+    margin-top: 3.5vh;
+    width: 72vw;
+  }
+  /* O lugar vazio é desenhado como moldura tracejada: diz "cabe alguém aqui"
+     sem fingir que já tem nome. */
+  .lugar {
+    border: .28vh dashed var(--line-strong);
+    border-radius: var(--r-lg);
+    padding: 3vh 1.5vw;
+    text-align: center;
+  }
+  .lugar .papel {
+    font-size: var(--fs-tv-label);
+    text-transform: uppercase;
+    letter-spacing: .18em;
+    color: var(--muted);
+  }
+  .lugar .nome {
+    margin-top: 1.2vh;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: var(--fs-tv-name);
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .lugar.a { border-color: var(--ciano-45); }
+  .lugar.a .nome { color: var(--lado-a); }
+  .lugar.b { border-color: var(--magenta-45); }
+  .lugar.b .nome { color: var(--lado-b); }
+  .lugares .versus { font-size: var(--fs-tv-name); color: var(--muted); }
+
+  /* ── Trilha dos rounds da partida ─────────────────────────────────────── */
+
+  .trilha {
+    display: flex;
+    gap: 1.2vw;
+    margin-top: 3vh;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .ficha {
+    min-width: 11vw;
+    padding: 1.4vh 1.2vw;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--glass);
+    text-align: center;
+  }
+  .ficha .n {
+    font-size: var(--fs-tv-label);
+    text-transform: uppercase;
+    letter-spacing: .16em;
+    color: var(--muted);
+  }
+  .ficha .t {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(24px, 3.2vw, 58px);
+    line-height: 1.05;
+    margin: .4vh 0;
+  }
+  .ficha .q {
+    font-size: var(--fs-tv-label);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ficha.a { border-color: var(--ciano-45); }
+  .ficha.a .t, .ficha.a .q { color: var(--lado-a); }
+  .ficha.b { border-color: var(--magenta-45); }
+  .ficha.b .t, .ficha.b .q { color: var(--lado-b); }
+  .ficha.empate .t, .ficha.empate .q { color: var(--muted); }
+
+  .veredito {
+    margin-top: 3vh;
+    font-size: var(--fs-tv-name);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .veredito.a { color: var(--lado-a); }
+  .veredito.b { color: var(--lado-b); }
+  .veredito.empate { color: var(--muted); }
+
+  /* ── Atração e resultado ──────────────────────────────────────────────── */
+
+  #idle .hero, #fim .hero {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1.15fr;
+    gap: 3vw;
+    align-items: center;
+    min-height: 0;
+  }
+  /* O quadro é a coisa mais alta da tela: ele é que decide se cabe em
+     1366×768. Recortar aqui é melhor que deixar a página rolar. */
+  #idle .quadro-wrap, #fim .quadro-wrap { min-height: 0; overflow: hidden; }
+
+  .como {
+    margin-top: 2.5vh;
+    font-size: var(--fs-tv-body);
+    color: var(--text-dim);
+    line-height: 1.5;
+    text-align: left;
+  }
+  .como b { color: var(--text); }
+  .como ol { margin: 0; padding-left: 1.3em; }
+  .como li { margin-bottom: .8vh; }
+
+  /* ── O placar do campeonato: uma linha por PARTIDA ─────────────────────
+     Reusa `.vss-rank-row` do design system (borda, pódio na posição, realce da
+     linha recém-jogada) e só troca a grade: aqui a linha tem dois lados e um
+     "×" no meio, em vez de nome e tempo. */
+
+  .quadro .vss-rank-row {
+    grid-template-columns: 2.2em 1fr auto 1fr;
+    font-size: clamp(13px, 1.35vw, 26px);
+    padding: .62vh 0;
+    gap: .8vw;
+    animation: slide-in var(--dur-slow) backwards;
+  }
+  @keyframes slide-in { from { opacity: 0; transform: translateX(-14px); } }
+
+  .quadro .vss-section-title { font-size: var(--fs-tv-label); margin-bottom: 1.4vh; }
+
+  .quadro .par {
+    display: flex;
+    align-items: baseline;
+    gap: .6em;
+    min-width: 0;
+  }
+  .quadro .par.a { justify-content: flex-end; color: var(--lado-a); }
+  .quadro .par.b { justify-content: flex-start; color: var(--lado-b); }
+  .quadro .par .nome {
+    font-weight: 700;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .quadro .par .pts {
+    font-style: normal;
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+  }
+  .quadro .par .t {
+    font-style: normal;
+    font-family: var(--digit);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  /* Até o TEMPO do B é rebaixado: se o número ficasse na cor do texto dos dois
+     lados, a linha voltaria a ser simétrica e o olho perderia o ponto de
+     entrada. É a regra do dono aplicada até o último elemento da linha. */
+  .quadro .par.b .t { color: var(--text-dim); opacity: .82; }
+  .quadro .par.b .nome, .quadro .par.b .pts { opacity: .88; }
+
+  .quadro .vs { color: var(--muted); }
+
+  /* O pódio pinta a posição de menta/ciano/azul, e o realce da partida
+     recém-jogada pinta o fundo de menta: azul sobre menta é exatamente a
+     combinação que some. Na linha realçada a posição volta para o branco — é a
+     única linha que as duas pessoas vão procurar na tela. */
+  .quadro .vss-rank-row.highlight .vss-rank-pos { color: var(--text); }
+
+  /* O realce do design system sangra para a esquerda com margem negativa, o
+     que funciona num cartão com folga. Aqui o quadro corta o excesso
+     (`overflow: hidden`, para a lista não empurrar a tela numa TV baixa), e a
+     sangria come exatamente o número da posição da linha realçada. Realce sem
+     sangria: o fundo continua marcando a linha, e o número continua legível. */
+  .quadro .vss-rank-row.highlight { margin-left: 0; padding-left: 0; }
+
+  .quadro .vss-rank-row.vaga { opacity: .32; }
+  .quadro .vss-rank-row.vaga .par { color: var(--muted); font-style: italic; }
+
+  /* ── Resultado ────────────────────────────────────────────────────────── */
+
+  .result-title {
+    font-size: var(--fs-tv-call);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 1.05;
+  }
+  .result-title .venceu {
+    background: linear-gradient(100deg, var(--menta), var(--ciano));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* A linha final: `A (2) 0:12.4 × 0:18.9 (1) B`, na mesma ordem e com os
+     mesmos tons do quadro do campeonato — é literalmente a linha que a partida
+     acabou de escrever lá. */
+  .linha-final {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: .5em;
+    margin-top: 2.4vh;
+    /* Menor que `--fs-tv-name` de propósito. No tamanho do nome da faixa, a
+       linha não cabia na coluna e quebrava com o "×" órfão no fim da primeira
+       — e ainda competia de igual para igual com o "FULANO VENCEU!" logo
+       acima, que é quem manda nesta tela. Aqui ela é a legenda do título. */
+    font-size: clamp(16px, 1.55vw, 30px);
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+  }
+  .linha-final .a { color: var(--lado-a); }
+  .linha-final .b { color: var(--lado-b); }
+  .linha-final .x { color: var(--muted); }
+
+  .result-sub { font-size: var(--fs-tv-body); color: var(--muted); margin-top: 1.8vh; }
+  .result-sub b { color: var(--menta); }
+
+  /* ── Pausa ────────────────────────────────────────────────────────────── */
+
+  .pause-veil {
+    position: fixed; inset: 0;
+    background: rgba(4, 10, 28, .88);
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 1.5vh;
+    z-index: 50;
+  }
+  .pause-veil.on { display: flex; }
+  .pause-veil b {
+    font-size: var(--fs-tv-call);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    color: var(--laranja);
+  }
+  .pause-veil span { font-size: var(--fs-tv-body); color: var(--muted); }
+</style>
+</head>
+<body class="vss-glow">
+
+<!-- ═══ ATRAÇÃO ═════════════════════════════════════════════════════════════ -->
+<div class="screen" id="idle">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-tagline">futebol de robôs · UNESP</span>
+    <span class="vss-badge visitante">X1</span>
+  </div>
+  <div class="hero">
+    <div>
+      <div class="titulo">Dois controles<br><em>melhor de três</em></div>
+      <div class="como">
+        <ol>
+          <li><b>Cada um pega um robô</b> e um controle. Não tem computador jogando.</li>
+          <li><b>O round acaba no primeiro gol.</b> Quem marcou leva o round.</li>
+          <li><b>Ganha quem fizer dois rounds.</b> O melhor tempo vai para o quadro.</li>
+        </ol>
+      </div>
+    </div>
+    <!-- As DUAS classes: `quadro-wrap` corta o excesso quando a tela é baixa,
+         `quadro` é o que todo o CSS da linha de partida mira. Faltando a
+         segunda, a linha cai na grade de três colunas do design system e o
+         lado B desaba para uma segunda linha. -->
+    <div class="quadro-wrap quadro" id="idleQuadro"></div>
+  </div>
+</div>
+
+<!-- ═══ REGISTRO ════════════════════════════════════════════════════════════ -->
+<div class="screen" id="registro">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge visitante">X1</span>
+  </div>
+  <div class="corpo">
+    <div class="rotulo">preparando o duelo</div>
+    <div class="titulo" style="margin-top:1.5vh">Quem vai<br><em>encarar quem?</em></div>
+    <div class="lugares">
+      <div class="lugar a">
+        <div class="papel">jogador A</div>
+        <div class="nome" id="regNomeA">—</div>
+      </div>
+      <div class="versus">×</div>
+      <div class="lugar b">
+        <div class="papel">jogador B</div>
+        <div class="nome" id="regNomeB">—</div>
+      </div>
+    </div>
+    <div class="dizer">o operador está anotando os nomes</div>
+  </div>
+</div>
+
+<!-- ═══ CONTAGEM ════════════════════════════════════════════════════════════ -->
+<div class="screen" id="contagem">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge visitante">X1</span>
+  </div>
+  <div class="placar" id="cdPlacar"></div>
+  <div class="corpo">
+    <div class="rotulo" id="cdLabel">round 1</div>
+    <div class="contagem" id="cdNum">3</div>
+  </div>
+</div>
+
+<!-- ═══ JOGANDO ═════════════════════════════════════════════════════════════ -->
+<div class="screen" id="jogando">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge visitante">X1</span>
+  </div>
+  <div class="placar" id="jgPlacar"></div>
+  <div class="corpo">
+    <div class="rotulo" id="jgLabel">round 1</div>
+    <div class="relogio" id="jgClock">0:00.0</div>
+    <div class="dizer" id="jgDizer">o round acaba no primeiro gol</div>
+    <div class="barra" id="jgBarra"><i style="width:100%"></i></div>
+  </div>
+</div>
+
+<!-- ═══ GOL ═════════════════════════════════════════════════════════════════ -->
+<div class="screen" id="gol">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+  </div>
+  <div class="placar" id="golPlacar"></div>
+  <div class="corpo">
+    <div class="grande" id="golTitulo">Gol!</div>
+    <div class="relogio" id="golTempo" style="font-size:clamp(40px,8vw,140px)">0:00.0</div>
+    <div class="dizer" id="golQuem"></div>
+  </div>
+</div>
+
+<!-- ═══ ANÚNCIO DO ROUND ════════════════════════════════════════════════════ -->
+<div class="screen" id="round">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+  </div>
+  <div class="placar" id="rdPlacar"></div>
+  <div class="corpo">
+    <div class="rotulo" id="rdLabel">round 1</div>
+    <div class="veredito" id="rdVeredito"></div>
+    <div class="trilha" id="rdTrilha"></div>
+  </div>
+</div>
+
+<!-- ═══ RESULTADO ═══════════════════════════════════════════════════════════ -->
+<div class="screen" id="fim">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge visitante">X1</span>
+  </div>
+  <div class="placar" id="fimPlacar"></div>
+  <div class="hero">
+    <div>
+      <div class="result-title" id="fimTitulo"></div>
+      <div class="linha-final" id="fimLinha"></div>
+      <div class="result-sub" id="fimSub"></div>
+    </div>
+    <div class="quadro-wrap quadro" id="fimQuadro"></div>
+  </div>
+</div>
+
+<div class="pause-veil" id="pauseVeil">
+  <b>Pausado</b>
+  <span>o jogo volta já</span>
+</div>
+
+<div class="vss-conn" id="conn"><span class="vss-dot"></span> sem conexão com o árbitro</div>
+<div class="vss-sr" id="live" aria-live="polite"></div>
+
+<script>
+'use strict';
+
+let ws = null;
+let state = null;
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => document.getElementById('conn').classList.remove('on');
+  ws.onclose = () => {
+    document.getElementById('conn').classList.add('on');
+    setTimeout(connect, 1000);
+  };
+  ws.onmessage = (event) => {
+    state = JSON.parse(event.data);
+    render();
+  };
+}
+
+/* `m:ss.d`. Tempo pode vir `null` (round sem gol, jogador que não venceu nenhum
+   round) — e traço é melhor que `NaN` na frente de duzentas pessoas. */
+function fmt(seconds) {
+  if (seconds == null || isNaN(seconds)) return '—';
+  const m = Math.floor(seconds / 60);
+  const s = seconds - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
+}
+
+/* Dez linhas porque o placar do campeonato guarda dez partidas (`insert_match`
+   corta em 10). As vagas vazias existem sempre: lugar livre é convite, e a
+   altura do quadro para de dançar a cada partida. */
+const QUADRO_SLOTS = 10;
+
+/* Faltando isto para o teto do round, o cronômetro vira laranja. Mesma ideia
+   da `duelo.html`; o número está aqui porque é regra de TELA, não do motor. */
+const AVISO = 15;
+
+function show(id) {
+  for (const el of document.querySelectorAll('.screen')) {
+    el.classList.toggle('on', el.id === id);
+  }
+}
+
+/* Nome é digitado por visitante de feira: tudo que vem do WebSocket passa por
+   aqui antes de virar HTML. */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text == null ? '' : text;
+  return div.innerHTML;
+}
+
+function announce(text) {
+  const el = document.getElementById('live');
+  if (el && el.textContent !== text) el.textContent = text;
+}
+
+function x1() {
+  return (state && state.x1) || {};
+}
+
+function nomeA() { return x1().name_a || state.player_name || 'JOGADOR A'; }
+function nomeB() { return x1().name_b || 'JOGADOR B'; }
+
+/* A faixa de placar. Desenhada nas cinco telas de partida a partir do mesmo
+   estado, para ficar literalmente no mesmo pixel em todas. Só redesenha quando
+   a assinatura muda: recriar nós a 30 Hz reiniciaria a animação e faria a
+   faixa piscar. */
+function placar(container) {
+  if (!container) return;
+
+  const m = x1();
+  const sig = [nomeA(), nomeB(), m.score_a, m.score_b,
+               m.round_number, m.rounds_to_win].join('|');
+  if (container.dataset.sig === sig) return;
+  container.dataset.sig = sig;
+
+  const alvo = m.rounds_to_win ?? 2;
+
+  container.innerHTML = `
+    <div class="lado">
+      <span class="quem a">${escapeHtml(nomeA())}</span>
+      <span class="rnum a">${m.score_a ?? 0}</span>
+    </div>
+    <div class="meio">round ${m.round_number ?? 1} · melhor de ${alvo * 2 - 1}</div>
+    <div class="lado dir">
+      <span class="rnum b">${m.score_b ?? 0}</span>
+      <span class="quem b">${escapeHtml(nomeB())}</span>
+    </div>`;
+}
+
+/* O placar do campeonato: uma linha por PARTIDA, os dois nomes na mesma linha.
+   A linha da partida recém-jogada é marcada por POSIÇÃO (`rank_position`) e não
+   por nome: dois visitantes podem se chamar igual, e a posição já vem
+   resolvida pelo árbitro. */
+function quadro(container, scores, ranked, position) {
+  if (!container) return;
+
+  const marca = ranked ? (position || 0) : 0;
+  const sig = JSON.stringify([scores || [], marca]);
+  if (container.dataset.sig === sig) return;
+  container.dataset.sig = sig;
+
+  const lista = scores || [];
+  const linhas = [];
+
+  for (let i = 0; i < QUADRO_SLOTS; i++) {
+    const linha = lista[i];
+    const atraso = `style="animation-delay:${i * 45}ms"`;
+
+    if (!linha) {
+      linhas.push(`<div class="vss-rank-row vaga" ${atraso}>
+        <span class="vss-rank-pos">${i + 1}</span>
+        <span class="par a">livre</span>
+        <span class="vs">×</span>
+        <span class="par b"></span>
+      </div>`);
+      continue;
+    }
+
+    const minha = marca === i + 1 ? ' highlight' : '';
+
+    linhas.push(`<div class="vss-rank-row${minha}" ${atraso}>
+      <span class="vss-rank-pos">${i + 1}</span>
+      <span class="par a">
+        <span class="nome">${escapeHtml(linha.name_a)}</span>
+        <i class="pts">(${linha.score_a ?? 0})</i>
+        <i class="t">${fmt(linha.time_a)}</i>
+      </span>
+      <span class="vs">×</span>
+      <span class="par b">
+        <i class="t">${fmt(linha.time_b)}</i>
+        <i class="pts">(${linha.score_b ?? 0})</i>
+        <span class="nome">${escapeHtml(linha.name_b)}</span>
+      </span>
+    </div>`);
+  }
+
+  container.innerHTML =
+    '<div class="vss-section-title">as vitórias mais rápidas do dia</div>' +
+    '<div class="vss-rank">' + linhas.join('') + '</div>';
+}
+
+/* A trilha dos rounds já jogados. Redesenhada só quando a lista muda, pelo
+   mesmo motivo da faixa. */
+function trilha(container) {
+  if (!container) return;
+
+  const lista = x1().rounds || [];
+  const sig = JSON.stringify(lista);
+  if (container.dataset.sig === sig) return;
+  container.dataset.sig = sig;
+
+  container.innerHTML = lista.map((r) => {
+    const lado = r.winner === 'A' ? 'a' : r.winner === 'B' ? 'b' : 'empate';
+    const quem = r.winner === 'A' ? nomeA()
+               : r.winner === 'B' ? nomeB()
+               : 'sem gol';
+    return `<div class="ficha ${lado}">
+      <div class="n">round ${r.number ?? '?'}</div>
+      <div class="t">${fmt(r.time)}</div>
+      <div class="q">${escapeHtml(quem)}</div>
+    </div>`;
+  }).join('');
+}
+
+function render() {
+  if (!state) return;
+
+  const m = x1();
+
+  document.getElementById('pauseVeil').classList.toggle('on', state.state === 'PAUSA');
+
+  switch (state.state) {
+    case 'IDLE':
+      show('idle');
+      // O realce da última partida continua aceso na atração: quem acabou de
+      // jogar fica olhando a própria linha, e é isso que junta gente na frente
+      // do telão.
+      quadro(document.getElementById('idleQuadro'), state.scores,
+             state.ranked, state.rank_position);
+      announce('aguardando dois jogadores');
+      break;
+
+    case 'REGISTRO':
+      show('registro');
+      document.getElementById('regNomeA').textContent = m.name_a || '—';
+      document.getElementById('regNomeB').textContent = m.name_b || '—';
+      announce('preparando o duelo');
+      break;
+
+    case 'CONTAGEM': {
+      show('contagem');
+      placar(document.getElementById('cdPlacar'));
+      document.getElementById('cdLabel').textContent = `round ${m.round_number ?? 1}`;
+      const falta = Math.max(0, Math.ceil(state.state_remaining || 0));
+      document.getElementById('cdNum').textContent = falta > 0 ? falta : 'JÁ!';
+      announce(`round ${m.round_number ?? 1} começando`);
+      break;
+    }
+
+    case 'JOGANDO': {
+      show('jogando');
+      placar(document.getElementById('jgPlacar'));
+      document.getElementById('jgLabel').textContent = `round ${m.round_number ?? 1}`;
+
+      const limite = state.time_limit || m.round_limit || 90;
+      const decorrido = state.elapsed || 0;
+      const resta = Math.max(0, limite - decorrido);
+
+      const clock = document.getElementById('jgClock');
+      clock.textContent = fmt(decorrido);
+      clock.classList.toggle('warn', resta <= AVISO);
+
+      // O aviso também é ESCRITO: cor sozinha não conta a história para quem
+      // não distingue laranja de branco no fundo do ginásio.
+      document.getElementById('jgDizer').innerHTML = resta <= AVISO
+        ? `acaba em <b>${fmt(resta)}</b>`
+        : 'o round acaba no primeiro gol';
+
+      const barra = document.getElementById('jgBarra');
+      barra.firstElementChild.style.width = `${(resta / limite) * 100}%`;
+      barra.classList.toggle('warn', resta <= AVISO);
+
+      announce(`round ${m.round_number ?? 1}, ${fmt(decorrido)}`);
+      break;
+    }
+
+    case 'GOL': {
+      show('gol');
+      placar(document.getElementById('golPlacar'));
+
+      const quemA = state.last_scorer === 'A';
+      const quem = quemA ? nomeA() : nomeB();
+
+      document.getElementById('golTempo').textContent = fmt(state.elapsed);
+      document.getElementById('golQuem').innerHTML =
+        `gol de <span class="${quemA ? 'a' : 'b'}">${escapeHtml(quem)}</span> em <b>${fmt(state.elapsed)}</b>`;
+
+      announce(`gol de ${quem}`);
+      break;
+    }
+
+    case 'ROUND': {
+      show('round');
+      placar(document.getElementById('rdPlacar'));
+      trilha(document.getElementById('rdTrilha'));
+
+      const lista = m.rounds || [];
+      const ultimo = lista[lista.length - 1];
+
+      document.getElementById('rdLabel').textContent =
+        `round ${(ultimo && ultimo.number) || m.round_number || 1} fechado`;
+
+      const veredito = document.getElementById('rdVeredito');
+      veredito.className = 'veredito';
+
+      if (!ultimo || ultimo.winner === 'EMPATE') {
+        veredito.classList.add('empate');
+        veredito.textContent = 'ninguém marcou — round empatado';
+      } else if (ultimo.winner === 'A') {
+        veredito.classList.add('a');
+        veredito.textContent = `round de ${nomeA()} · ${fmt(ultimo.time)}`;
+      } else {
+        veredito.classList.add('b');
+        veredito.textContent = `round de ${nomeB()} · ${fmt(ultimo.time)}`;
+      }
+
+      announce(veredito.textContent);
+      break;
+    }
+
+    case 'FIM': {
+      show('fim');
+      placar(document.getElementById('fimPlacar'));
+
+      const venceuA = m.winner === 'A';
+      const venceuB = m.winner === 'B';
+      const campeao = venceuA ? nomeA() : venceuB ? nomeB() : '';
+
+      document.getElementById('fimTitulo').innerHTML = campeao
+        ? `<span class="venceu">${escapeHtml(campeao)}</span><br>venceu!`
+        : 'Empate<br>na melhor de três';
+
+      // A mesma linha que a partida acabou de escrever no quadro ao lado.
+      document.getElementById('fimLinha').innerHTML = `
+        <span class="a">${escapeHtml(nomeA())} (${m.score_a ?? 0}) ${fmt(m.best_a)}</span>
+        <span class="x">×</span>
+        <span class="b">${fmt(m.best_b)} (${m.score_b ?? 0}) ${escapeHtml(nomeB())}</span>`;
+
+      const sub = document.getElementById('fimSub');
+      if (state.ranked && state.rank_position) {
+        sub.innerHTML = `entrou no quadro do dia — <b>${state.rank_position}º melhor do dia</b>`;
+      } else if (campeao) {
+        sub.textContent = 'partida encerrada · o tempo do quadro é o melhor round de cada um';
+      } else {
+        sub.textContent = 'empate não entra no quadro — joguem de novo';
+      }
+
+      quadro(document.getElementById('fimQuadro'), state.scores,
+             state.ranked, state.rank_position);
+      announce(campeao ? `${campeao} venceu` : 'empate');
+      break;
+    }
+
+    default:
+      // PAUSA cai aqui de propósito: o véu cobre a tela e o que estava embaixo
+      // continua embaixo. Trocar de tela ao pausar perderia o contexto de onde
+      // o jogo parou.
+      break;
+  }
+}
+
+connect();
+</script>
+</body>
+</html>
