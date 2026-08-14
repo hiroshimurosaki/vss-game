@@ -25,7 +25,7 @@ e do [VSS_Arduino](https://github.com/carrossel-caipira/VSS_Arduino).
 | `firmware/` — TX bridge e firmware do robô | salto validado em 06/08, mas o rádio do robô morre por contato intermitente — [diagnóstico de 11/08](docs/diagnostico-radio-2026-08-11.md) |
 | `simulator` — física do campo + GUI no navegador | pronto |
 | `ai_player` — o adversário | pronto |
-| `game_master` — regras, cronômetro, ranking e telas | pronto |
+| `game_master` — regras, cronômetro, ranking e telas (clássico, duelo e X1) | pronto |
 | `vision_game` — detecção da bola e dos robôs | detecta 100% a 30 Hz, calibrado |
 
 ## O que falta para o jogo estar 100%
@@ -397,6 +397,45 @@ ele, apita sozinho para dar para brincar.
 Um gol só conta de novo depois que a bola **sai** da área. Travar por tempo não
 basta: se ela ficar presa no fundo do gol — o que acontece de verdade quando
 ninguém recoloca — o lockout expira e o placar dispara em série.
+
+### X1 — duas pessoas, sem câmera
+
+```bash
+ros2 launch startup x1.py serial_port:=$(./tools/porta.sh)
+```
+
+O modo que existe para o dia em que **não há câmera**. Sem visão não há IA — mas
+os dois robôs continuam funcionando pelo rádio, e duas pessoas com dois
+controles é um jogo inteiro que não depende de enxergar nada. O árbitro vira
+humano: quem aperta o botão de gol é o operador, e no X1 esse botão não é o
+seguro, é o **apito**.
+
+**O formato.** O round acaba no **primeiro gol**, ou no teto de 90 s — aí empata
+e ninguém pontua. Ganha quem fizer **dois rounds**, com teto de cinco para o
+caso patológico de empate em série.
+
+**Por que o primeiro gol.** Porque é o que produz TEMPO, e tempo é o que o placar
+compara. Round até 2 gols mede resistência; round até o primeiro mede quem
+chegou primeiro, que é a mesma grandeza do ranking do modo normal.
+
+**O placar do campeonato.** Uma linha por partida, com os dois nomes:
+`FERNANDO (2) 0:18.3 × 0:31.2 (1) MARIANA`. O tempo de cada pessoa é o **melhor
+round que ela venceu** — não a soma, que puniria quem jogou rounds longos e
+perdeu, nem a média, que mistura vitória com derrota. Só partida **decidida**
+entra; um 1×1 que estourou o teto de rounds não tem o que ranquear. Fica em
+`~/.vss-game/highscores_x1.json`, separado porque tempo de X1 e tempo de partida
+clássica não são a mesma grandeza.
+
+**Na tela, o lado B sai sempre num tom mais escuro que o A** — no quadro, no
+placar da partida e nos nomes. É para o olho ter um ponto de entrada fixo e os
+dois lados nunca se confundirem no meio de um lance.
+
+Os lados herdam a convenção do jogo: **A é o robô 1**, ataca a esquerda, na cor
+do visitante; **B é o robô 0**, ataca a direita, no magenta que era da IA.
+
+Regras em `src/game_master/game_master/x1.py`, puras e sem ROS — o tempo entra
+por parâmetro, então `./tools/x1_bench.py` roda um campeonato inteiro em
+milissegundos e confere que elas fecham.
 
 ### Ranking
 
