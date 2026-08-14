@@ -148,6 +148,11 @@ FLASH_STR(TXT_SPIN2, "giro no proprio eixo, sentido 2");
 FLASH_STR(TXT_SLOW,  "as duas para frente, PWM baixo (80)");
 FLASH_STR(TXT_END,   "fim");
 
+FLASH_STR(TXT_PIN_AIN1, "AIN1 (D4) alto = roda A para FRENTE");
+FLASH_STR(TXT_PIN_AIN2, "AIN2 (D3) alto = roda A para TRAS");
+FLASH_STR(TXT_PIN_BIN1, "BIN1 (D7) alto = roda B para FRENTE");
+FLASH_STR(TXT_PIN_BIN2, "BIN2 (D8) alto = roda B para TRAS");
+
 const Step SEQUENCE[] = {
   {   0,    0,  500, TXT_IDLE0_F },
   { 180,    0, 1500, TXT_A_FWD_F },
@@ -248,6 +253,48 @@ void runRamp(char which) {
   Serial.println(F("=== rampa terminada ==="));
 }
 
+// ── Teste dos pinos de direcao ───────────────────────────
+// Existe para separar "o Nano nao manda o sinal" de "o driver nao obedece" —
+// a duvida que sobra quando uma roda gira num sentido so. Cada pino de direcao
+// fica alto e parado por alguns segundos, com o PWM em zero, para dar tempo de
+// encostar o multimetro no header do TB6612 sem o robo se mexer.
+//
+// Leia no pino DO DRIVER, nao no do Nano: 5V la = o sinal atravessou o fio, e a
+// culpa e do TB6612; 0V la com 5V no Nano = fio ou solda.
+void runPinTest() {
+  const uint8_t pins[4] = {AIN1, AIN2, BIN1, BIN2};
+  const __FlashStringHelper *const labels[4] = {
+      TXT_PIN_AIN1_F, TXT_PIN_AIN2_F, TXT_PIN_BIN1_F, TXT_PIN_BIN2_F};
+
+  stopAll();
+
+  Serial.println();
+  Serial.println(F("=== teste dos pinos de direcao (qualquer tecla aborta) ==="));
+  Serial.println(F("Multimetro no header do TB6612. PWM em zero: nada gira."));
+
+  for (uint8_t i = 0; i < 4; i++) {
+    digitalWrite(AIN1, LOW);
+    digitalWrite(AIN2, LOW);
+    digitalWrite(BIN1, LOW);
+    digitalWrite(BIN2, LOW);
+    digitalWrite(pins[i], HIGH);
+
+    Serial.print(F("["));
+    Serial.print(i + 1);
+    Serial.print(F("/4] "));
+    Serial.println(labels[i]);
+
+    if (!waitOrAbort(4000)) {
+      stopAll();
+      Serial.println(F("=== abortado ==="));
+      return;
+    }
+  }
+
+  stopAll();
+  Serial.println(F("=== teste dos pinos terminado ==="));
+}
+
 // ── Menu ─────────────────────────────────────────────────
 void printHelp() {
   Serial.println();
@@ -255,10 +302,12 @@ void printHelp() {
   Serial.println(F(" r  roteiro de afericao completo"));
   Serial.println(F(" p  rampa da roda A (acha o PWM minimo)"));
   Serial.println(F(" o  rampa da roda B"));
+  Serial.println(F(" t  teste dos pinos de direcao (multimetro no TB6612)"));
   Serial.println();
   Serial.println(F(" w  frente        s  re"));
   Serial.println(F(" a  gira esquerda d  gira direita"));
-  Serial.println(F(" 1  so a roda A   2  so a roda B"));
+  Serial.println(F(" 1  roda A frente 2  roda B frente"));
+  Serial.println(F(" 3  roda A tras   4  roda B tras"));
   Serial.println(F(" x  parar         espaco  parar"));
   Serial.println(F(" +  mais rapido   -  mais devagar"));
   Serial.println(F(" q  standby do driver (motores desligados)"));
@@ -278,13 +327,19 @@ void handleKey(char c) {
     case 'r': runSequence(); break;
     case 'p': runRamp('A'); break;
     case 'o': runRamp('B'); break;
+    case 't': runPinTest(); break;
 
     case 'w': drive( manualSpeed,  manualSpeed, F("frente")); break;
     case 's': drive(-manualSpeed, -manualSpeed, F("re")); break;
     case 'a': drive(-manualSpeed,  manualSpeed, F("gira esquerda")); break;
     case 'd': drive( manualSpeed, -manualSpeed, F("gira direita")); break;
-    case '1': drive( manualSpeed,            0, F("so roda A")); break;
-    case '2': drive(           0,  manualSpeed, F("so roda B")); break;
+    // Roda e sentido isolados. O roteiro `r` ja cobre os quatro, mas quando o
+    // suspeito e um sentido so e preciso repetir aquele passo varias vezes sem
+    // esperar o roteiro inteiro passar por ele.
+    case '1': drive( manualSpeed,            0, F("so roda A, FRENTE")); break;
+    case '2': drive(           0,  manualSpeed, F("so roda B, FRENTE")); break;
+    case '3': drive(-manualSpeed,            0, F("so roda A, TRAS")); break;
+    case '4': drive(           0, -manualSpeed, F("so roda B, TRAS")); break;
 
     case 'x':
     case ' ':

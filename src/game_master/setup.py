@@ -22,6 +22,7 @@ setup(
     entry_points={
         'console_scripts': [
             'master_node = game_master.master_node:main',
+            'turn_mux = game_master.turn_mux:main',
         ],
     },
 )

@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carrossel Caipira — Duelo com o Franky</title>
+<link rel="stylesheet" href="/vss.css">
+<style>
+  /* ═══ TELÃO DO DUELO ══════════════════════════════════════════════════════
+
+     Um robô só, dois motoristas, turnos alternados. A tela tem uma pergunta
+     para responder de dez metros: QUEM ESTÁ GANHANDO, e por quanto.
+
+     O que organiza o desenho:
+
+     · O adversário não está no campo, está no relógio. Então o número grande
+       não é placar, é TEMPO — e o segundo número mais importante é o tempo A
+       BATER, que fica logo abaixo, no mesmo eixo do olho.
+     · A faixa de rounds fica no mesmo lugar em TODAS as telas. É a única coisa
+       que persiste, e é ela que conta a história da partida.
+     · Cada motorista tem sua cor, herdada do resto do projeto: o Franky é
+       magenta (o robô 0, que é dele) e o visitante é ciano. No duelo os dois
+       dirigem o MESMO robô, mas a identidade continua sendo de quem dirige.
+     · Todo estado está escrito, não só colorido.
+
+     Numerais em Poppins 900, não na Advent Pro: a display tem numeral de
+     largura irregular e o cronômetro dança a cada décimo. Decisão já tomada
+     olhando as duas renderizadas.                                            */
+
+  :root {
+    --digit: var(--font);
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+
+  .screen {
+    position: relative;
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    padding: 3vh 3.5vw;
+  }
+  .screen.on { display: flex; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    gap: 1.4vw;
+    padding-bottom: 1.6vh;
+    border-bottom: 1px solid var(--line);
+    flex: none;
+  }
+  .top .vss-brand { font-size: var(--fs-tv-brand); }
+  .top .vss-badge { margin-left: auto; font-size: var(--fs-tv-label); color: var(--menta); }
+
+  /* ── A faixa de rounds, presente em todas as telas ────────────────────── */
+
+  .rounds {
+    flex: none;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 2vw;
+    padding: 1.6vh 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .rounds .lado { display: flex; align-items: center; gap: 1vw; }
+  .rounds .lado.dir { justify-content: flex-end; }
+
+  .quem {
+    font-size: var(--fs-tv-name);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 26vw;
+  }
+  .quem.visitante { color: var(--visitante); }
+  .quem.ia        { color: var(--ia); }
+  .quem.apagado   { opacity: .38; }
+
+  .rnum {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(30px, 4.2vw, 78px);
+    line-height: .9;
+  }
+  .rnum.visitante { color: var(--visitante); }
+  .rnum.ia        { color: var(--ia); }
+
+  .rounds .meio {
+    text-align: center;
+    font-size: var(--fs-tv-label);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .16em;
+    white-space: nowrap;
+  }
+
+  /* Marcador de quem está com o volante AGORA. Sublinha o nome, não pisca:
+     coisa piscando no canto do olho compete com o cronômetro. */
+  .quem.ativo {
+    box-shadow: inset 0 -.45vh 0 currentColor;
+    padding-bottom: .5vh;
+  }
+
+  /* ── Corpo, comum a quase tudo ────────────────────────────────────────── */
+
+  .corpo {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 0;
+  }
+
+  .rotulo {
+    font-size: var(--fs-tv-label);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .16em;
+  }
+
+  .relogio {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-tv-score);
+    line-height: .92;
+    margin-top: .6vh;
+  }
+  .relogio.visitante { color: var(--visitante); }
+  .relogio.ia        { color: var(--ia); }
+  /* Passou do tempo do adversário: ainda dá para marcar, mas o round já era. */
+  .relogio.perdido   { color: var(--laranja); }
+
+  .bater {
+    margin-top: 2.2vh;
+    font-size: var(--fs-tv-body);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+  }
+  .bater b {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-tv-name);
+    color: var(--text);
+    margin-left: .6vw;
+  }
+
+  /* Barra do teto do turno. Some quando não há turno correndo. */
+  .barra {
+    flex: none;
+    height: 1vh;
+    background: rgba(255, 255, 255, .06);
+    border-radius: var(--r-full);
+    overflow: hidden;
+    margin-top: 2.4vh;
+    width: 62vw;
+  }
+  .barra > i {
+    display: block;
+    height: 100%;
+    background: var(--gradiente);
+    transition: width 120ms linear;
+  }
+  .barra.warn > i { background: var(--laranja); }
+
+  /* ── Preparo ──────────────────────────────────────────────────────────── */
+
+  .checklist {
+    display: flex;
+    gap: 3vw;
+    margin-top: 3vh;
+    font-size: var(--fs-tv-body);
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: .8vw;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  .check.ok { color: var(--menta); }
+  .check .bolha {
+    width: 1.5em; height: 1.5em;
+    border-radius: var(--r-full);
+    border: .18em solid currentColor;
+    display: grid; place-items: center;
+    font-size: .8em;
+  }
+
+  .titulo {
+    font-size: var(--fs-tv-call);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 1.02;
+  }
+  .titulo em {
+    font-style: normal;
+    background: var(--gradiente-vivo);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  .contagem {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-tv-huge);
+    line-height: 1;
+  }
+
+  .grande {
+    font-size: var(--fs-tv-huge);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  /* ── Anúncio do round ─────────────────────────────────────────────────── */
+
+  .duelo-tempos {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 2.5vw;
+    margin-top: 3vh;
+    width: 76vw;
+  }
+  .duelo-tempos .col { text-align: center; }
+  .duelo-tempos .t {
+    font-family: var(--digit);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(40px, 8vw, 140px);
+    line-height: .95;
+  }
+  .duelo-tempos .visitante .t { color: var(--visitante); }
+  .duelo-tempos .ia .t        { color: var(--ia); }
+  .duelo-tempos .col.perdeu   { opacity: .40; }
+  .duelo-tempos .versus {
+    font-size: var(--fs-tv-name);
+    color: var(--muted);
+  }
+  .duelo-tempos .nome {
+    font-size: var(--fs-tv-label);
+    text-transform: uppercase;
+    letter-spacing: .16em;
+    color: var(--muted);
+    margin-bottom: .8vh;
+  }
+
+  .veredito {
+    margin-top: 3vh;
+    font-size: var(--fs-tv-name);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .veredito.visitante { color: var(--visitante); }
+  .veredito.ia        { color: var(--ia); }
+  .veredito.empate    { color: var(--muted); }
+
+  /* ── Atração e resultado ──────────────────────────────────────────────── */
+
+  #idle .hero {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.1fr .9fr;
+    gap: 3vw;
+    align-items: center;
+    min-height: 0;
+  }
+  #idle .rank-wrap, #fim .rank-wrap { min-height: 0; overflow: hidden; }
+
+  .como {
+    margin-top: 2.5vh;
+    font-size: var(--fs-tv-body);
+    color: var(--text-dim);
+    line-height: 1.5;
+    text-align: left;
+  }
+  .como b { color: var(--text); }
+  .como ol { margin: 0; padding-left: 1.3em; }
+  .como li { margin-bottom: .8vh; }
+
+  .result-title {
+    font-size: var(--fs-tv-call);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 1.05;
+  }
+  .win .result-title {
+    background: linear-gradient(100deg, var(--menta), var(--ciano));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lose .result-title { color: var(--ia); }
+  .result-sub { font-size: var(--fs-tv-body); color: var(--muted); margin-top: 1.6vh; }
+
+  .pause-veil {
+    position: fixed; inset: 0;
+    background: rgba(4, 10, 28, .88);
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 1.5vh;
+    z-index: 50;
+  }
+  .pause-veil.on { display: flex; }
+  .pause-veil b {
+    font-size: var(--fs-tv-call);
+    font-family: var(--display);
+    font-weight: 900;
+    text-transform: uppercase;
+    color: var(--laranja);
+  }
+  .pause-veil span { font-size: var(--fs-tv-body); color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ═══ ATRAÇÃO ═════════════════════════════════════════════════════════════ -->
+<div class="screen" id="idle">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-tagline">futebol de robôs · UNESP</span>
+    <span class="vss-badge" id="idleDiff">MÉDIO</span>
+  </div>
+  <div class="hero">
+    <div>
+      <div class="titulo">Você e o Franky<br><em>no mesmo robô</em></div>
+      <div class="como">
+        <ol>
+          <li><b>Sua vez:</b> leve a bola ao gol o mais rápido que conseguir.</li>
+          <li><b>A vez dele:</b> o Franky faz o mesmo percurso, no mesmo robô.</li>
+          <li><b>Ganha o round</b> quem levou menos tempo. Melhor de três.</li>
+        </ol>
+      </div>
+    </div>
+    <div class="rank-wrap" id="idleRank"></div>
+  </div>
+</div>
+
+<!-- ═══ PREPARO ═════════════════════════════════════════════════════════════ -->
+<div class="screen" id="preparo">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge" id="prepDiff">MÉDIO</span>
+  </div>
+  <div class="rounds" id="prepRounds"></div>
+  <div class="corpo">
+    <div class="rotulo">preparando o campo</div>
+    <div class="titulo" style="margin-top:1.5vh" id="prepTitulo">O Franky está<br><em>recolocando o robô</em></div>
+    <div class="checklist">
+      <div class="check" id="prepRobo">
+        <span class="bolha">•</span> robô na marca
+      </div>
+      <div class="check" id="prepBola">
+        <span class="bolha">•</span> bola no centro
+      </div>
+    </div>
+    <div class="bater" id="prepVez"></div>
+  </div>
+</div>
+
+<!-- ═══ CONTAGEM ════════════════════════════════════════════════════════════ -->
+<div class="screen" id="contagem">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge" id="cdDiff">MÉDIO</span>
+  </div>
+  <div class="rounds" id="cdRounds"></div>
+  <div class="corpo">
+    <div class="rotulo" id="cdVez">a vez de</div>
+    <div class="contagem" id="cdNum">3</div>
+  </div>
+</div>
+
+<!-- ═══ TURNO ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="turno">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge" id="turnoDiff">MÉDIO</span>
+  </div>
+  <div class="rounds" id="turnoRounds"></div>
+  <div class="corpo">
+    <div class="rotulo" id="turnoQuem">dirigindo</div>
+    <div class="relogio" id="turnoClock">0:00.0</div>
+    <div class="bater" id="turnoBater"></div>
+    <div class="barra" id="turnoBarra"><i style="width:100%"></i></div>
+  </div>
+</div>
+
+<!-- ═══ GOL ═════════════════════════════════════════════════════════════════ -->
+<div class="screen" id="gol">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+  </div>
+  <div class="rounds" id="golRounds"></div>
+  <div class="corpo">
+    <div class="grande" id="golTitulo">Gol!</div>
+    <div class="relogio" id="golTempo" style="font-size:clamp(40px,8vw,140px)">0:00.0</div>
+    <div class="bater" id="golQuem"></div>
+  </div>
+</div>
+
+<!-- ═══ ANÚNCIO DO ROUND ════════════════════════════════════════════════════ -->
+<div class="screen" id="round">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+  </div>
+  <div class="rounds" id="roundRounds"></div>
+  <div class="corpo">
+    <div class="rotulo" id="roundLabel">round 1</div>
+    <div class="duelo-tempos">
+      <div class="col visitante" id="roundVoce">
+        <div class="nome" id="roundNomeVoce">você</div>
+        <div class="t" id="roundTVoce">—</div>
+      </div>
+      <div class="versus">×</div>
+      <div class="col ia" id="roundFranky">
+        <div class="nome">Franky</div>
+        <div class="t" id="roundTFranky">—</div>
+      </div>
+    </div>
+    <div class="veredito" id="roundVeredito"></div>
+  </div>
+</div>
+
+<!-- ═══ RESULTADO ═══════════════════════════════════════════════════════════ -->
+<div class="screen" id="fim">
+  <div class="top">
+    <span class="vss-brand">Carrossel Caipira</span>
+    <span class="vss-badge" id="fimDiff">MÉDIO</span>
+  </div>
+  <div class="rounds" id="fimRounds"></div>
+  <div class="hero" style="flex:1;display:grid;grid-template-columns:1.1fr .9fr;gap:3vw;align-items:center;min-height:0">
+    <div id="fimBloco">
+      <div class="result-title" id="fimTitulo">Você venceu!</div>
+      <div class="result-sub" id="fimSub"></div>
+    </div>
+    <div class="rank-wrap" id="fimRank"></div>
+  </div>
+</div>
+
+<div class="pause-veil" id="pauseVeil">
+  <b>Pausado</b>
+  <span>o jogo volta já</span>
+</div>
+
+<div class="vss-conn" id="conn"><span class="vss-dot"></span> sem conexão com o árbitro</div>
+<div class="vss-sr" id="live" aria-live="polite"></div>
+
+<script>
+'use strict';
+
+let ws = null;
+let state = null;
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => document.getElementById('conn').classList.remove('on');
+  ws.onclose = () => {
+    document.getElementById('conn').classList.add('on');
+    setTimeout(connect, 1000);
+  };
+  ws.onmessage = (event) => {
+    state = JSON.parse(event.data);
+    render();
+  };
+}
+
+function fmt(seconds) {
+  if (seconds == null || isNaN(seconds)) return '—';
+  const m = Math.floor(seconds / 60);
+  const s = seconds - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
+}
+
+const DIFF_LABEL = { FACIL: 'FÁCIL', MEDIO: 'MÉDIO', DIFICIL: 'DIFÍCIL' };
+const RANK_SLOTS = 8;
+
+function show(id) {
+  for (const el of document.querySelectorAll('.screen')) {
+    el.classList.toggle('on', el.id === id);
+  }
+}
+
+function esc(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function announce(text) {
+  const el = document.getElementById('live');
+  if (el && el.textContent !== text) el.textContent = text;
+}
+
+/* A faixa de rounds. Desenhada nas seis telas a partir do mesmo estado, para
+   ficar literalmente no mesmo pixel em todas — o olho que a achou uma vez não
+   procura de novo. Só redesenha quando muda: recriar nós a 30 Hz mataria a
+   transição do CSS. */
+function rounds(container) {
+  if (!container) return;
+
+  const nome = state.player_name || 'VOCÊ';
+  const vez = state.state === 'TURNO' ? state.driver : '';
+  const sig = [nome, state.player_rounds, state.ai_rounds, vez,
+               state.rounds_to_win, state.round_number].join('|');
+  if (container.dataset.sig === sig) return;
+  container.dataset.sig = sig;
+
+  const ativoVoce = vez === 'JOGADOR' ? ' ativo' : '';
+  const ativoIA = vez === 'IA' ? ' ativo' : '';
+
+  container.innerHTML = `
+    <div class="lado">
+      <span class="quem visitante${ativoVoce}">${esc(nome)}</span>
+      <span class="rnum visitante">${state.player_rounds ?? 0}</span>
+    </div>
+    <div class="meio">round ${state.round_number ?? 1} · melhor de ${(state.rounds_to_win ?? 2) * 2 - 1}</div>
+    <div class="lado dir">
+      <span class="rnum ia">${state.ai_rounds ?? 0}</span>
+      <span class="quem ia${ativoIA}">Franky</span>
+    </div>`;
+}
+
+function ranking(container, scores, highlightName, highlightTime) {
+  const sig = JSON.stringify([scores, highlightName ?? null,
+                              highlightTime == null ? null : highlightTime.toFixed(2)]);
+  if (container.dataset.sig === sig) return;
+  container.dataset.sig = sig;
+
+  const list = scores || [];
+  const rows = [];
+
+  // As vagas vazias existem sempre: lugar livre é convite, e a altura do
+  // cartão para de dançar a cada partida. Mesma decisão do telão clássico.
+  for (let index = 0; index < RANK_SLOTS; index++) {
+    const entry = list[index];
+
+    if (!entry) {
+      rows.push(`<div class="vss-rank-row vaga" style="animation-delay:${index * 45}ms">
+        <span class="vss-rank-pos">${index + 1}</span>
+        <span class="vss-rank-name">livre</span>
+        <span class="vss-rank-time">—</span>
+      </div>`);
+      continue;
+    }
+
+    const mine = highlightName && entry.name === highlightName
+      && Math.abs(entry.time - highlightTime) < 0.05;
+
+    rows.push(`<div class="vss-rank-row${mine ? ' highlight' : ''}" style="animation-delay:${index * 45}ms">
+      <span class="vss-rank-pos">${index + 1}</span>
+      <span class="vss-rank-name">${esc(entry.name)}</span>
+      <span class="vss-rank-time">${fmt(entry.time)}</span>
+    </div>`);
+  }
+
+  container.innerHTML =
+    '<div class="vss-section-title">quem venceu o Franky mais rápido</div>' +
+    '<div class="vss-rank">' + rows.join('') + '</div>';
+}
+
+/* O tempo que o motorista da vez precisa bater: o do adversário NESTE round,
+   se ele já jogou. No primeiro turno do round não existe alvo — e dizer "—"
+   é melhor que inventar um número. */
+function alvoDoTurno() {
+  const cur = state.current || {};
+  if (state.driver === 'JOGADOR') {
+    return cur.ai_scored ? cur.ai_time : null;
+  }
+  return cur.player_scored ? cur.player_time : null;
+}
+
+function marcaCheck(el, ok, texto) {
+  el.classList.toggle('ok', !!ok);
+  el.innerHTML = `<span class="bolha">${ok ? '✓' : '•'}</span> ${texto}`;
+}
+
+function render() {
+  if (!state) return;
+
+  const diff = DIFF_LABEL[state.difficulty] || state.difficulty || '';
+  for (const id of ['idleDiff', 'prepDiff', 'cdDiff', 'turnoDiff', 'fimDiff']) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = diff;
+  }
+
+  document.getElementById('pauseVeil').classList.toggle('on', state.state === 'PAUSA');
+
+  switch (state.state) {
+    case 'IDLE':
+    case 'REGISTRO':
+      show('idle');
+      ranking(document.getElementById('idleRank'), state.scores);
+      announce('aguardando jogador');
+      break;
+
+    case 'PREPARO': {
+      show('preparo');
+      rounds(document.getElementById('prepRounds'));
+      marcaCheck(document.getElementById('prepRobo'), state.robot_ready, 'robô na marca');
+      marcaCheck(document.getElementById('prepBola'), state.ball_ready, 'bola no centro');
+
+      const seu = state.driver === 'JOGADOR';
+      document.getElementById('prepVez').innerHTML = seu
+        ? 'a seguir: <b>sua vez</b>'
+        : 'a seguir: <b>a vez do Franky</b>';
+      announce('preparando o campo');
+      break;
+    }
+
+    case 'CONTAGEM': {
+      show('contagem');
+      rounds(document.getElementById('cdRounds'));
+      const seu = state.driver === 'JOGADOR';
+      document.getElementById('cdVez').textContent = seu ? 'sua vez' : 'a vez do Franky';
+      const restante = Math.max(0, Math.ceil(state.state_remaining || 0));
+      document.getElementById('cdNum').textContent = restante > 0 ? restante : 'JÁ!';
+      announce(seu ? 'sua vez' : 'vez do Franky');
+      break;
+    }
+
+    case 'TURNO': {
+      show('turno');
+      rounds(document.getElementById('turnoRounds'));
+
+      const seu = state.driver === 'JOGADOR';
+      const alvo = alvoDoTurno();
+      const clock = document.getElementById('turnoClock');
+
+      document.getElementById('turnoQuem').textContent =
+        seu ? `${state.player_name || 'você'} dirigindo` : 'Franky dirigindo';
+
+      clock.textContent = fmt(state.elapsed);
+      clock.classList.toggle('visitante', seu);
+      clock.classList.toggle('ia', !seu);
+      // Passou do tempo do adversário: o round já está perdido, e a tela
+      // precisa dizer isso — é o que faz a torcida reagir.
+      clock.classList.toggle('perdido', alvo != null && state.elapsed > alvo);
+
+      document.getElementById('turnoBater').innerHTML =
+        alvo != null ? `para ganhar o round: <b>${fmt(alvo)}</b>`
+                     : 'marque o mais rápido que conseguir';
+
+      const limite = state.turn_limit || state.time_limit || 30;
+      const restante = Math.max(0, limite - (state.elapsed || 0));
+      const barra = document.getElementById('turnoBarra');
+      barra.firstElementChild.style.width = `${(restante / limite) * 100}%`;
+      barra.classList.toggle('warn', restante <= 5);
+
+      announce(`${seu ? 'você' : 'Franky'} dirigindo, ${fmt(state.elapsed)}`);
+      break;
+    }
+
+    case 'GOL': {
+      show('gol');
+      rounds(document.getElementById('golRounds'));
+      const seu = state.driver === 'JOGADOR';
+      const clock = document.getElementById('golTempo');
+      clock.textContent = fmt(state.elapsed);
+      clock.classList.toggle('visitante', seu);
+      clock.classList.toggle('ia', !seu);
+      document.getElementById('golQuem').textContent =
+        seu ? `${state.player_name || 'você'} fechou o turno` : 'Franky fechou o turno';
+      announce('gol');
+      break;
+    }
+
+    case 'ROUND': {
+      show('round');
+      rounds(document.getElementById('roundRounds'));
+
+      const ultimo = (state.rounds || [])[(state.rounds || []).length - 1];
+      if (!ultimo) break;
+
+      document.getElementById('roundLabel').textContent = `round ${ultimo.number}`;
+      document.getElementById('roundNomeVoce').textContent = state.player_name || 'você';
+      document.getElementById('roundTVoce').textContent =
+        ultimo.player_scored ? fmt(ultimo.player_time) : 'não marcou';
+      document.getElementById('roundTFranky').textContent =
+        ultimo.ai_scored ? fmt(ultimo.ai_time) : 'não marcou';
+
+      document.getElementById('roundVoce').classList.toggle('perdeu', ultimo.winner === 'IA');
+      document.getElementById('roundFranky').classList.toggle('perdeu', ultimo.winner === 'JOGADOR');
+
+      const veredito = document.getElementById('roundVeredito');
+      veredito.className = 'veredito';
+
+      if (ultimo.winner === 'JOGADOR') {
+        veredito.classList.add('visitante');
+        veredito.textContent = 'o round é seu!';
+      } else if (ultimo.winner === 'IA') {
+        veredito.classList.add('ia');
+        veredito.textContent = 'round do Franky';
+      } else {
+        veredito.classList.add('empate');
+        veredito.textContent = 'ninguém marcou — round empatado';
+      }
+
+      announce(veredito.textContent);
+      break;
+    }
+
+    case 'FIM': {
+      show('fim');
+      rounds(document.getElementById('fimRounds'));
+
+      const bloco = document.getElementById('fimBloco');
+      bloco.className = state.player_won ? 'win' : 'lose';
+
+      document.getElementById('fimTitulo').innerHTML = state.player_won
+        ? 'Você venceu<br>o Franky!'
+        : 'O Franky<br>levou dessa vez';
+
+      const placar = `${state.player_rounds} × ${state.ai_rounds} em rounds`;
+      const tempo = fmt(state.player_total);
+
+      let sub;
+      if (state.player_won && state.ranked) {
+        sub = `${placar} · seu tempo somado: ${tempo} — <b>${state.rank_position}º lugar!</b>`;
+      } else if (state.player_won) {
+        sub = `${placar} · seu tempo somado: ${tempo}`;
+      } else {
+        sub = `${placar} · tente de novo, o controle é seu`;
+      }
+      document.getElementById('fimSub').innerHTML = sub;
+
+      ranking(document.getElementById('fimRank'), state.scores,
+              state.player_name, state.player_total);
+      announce(state.player_won ? 'você venceu' : 'o Franky venceu');
+      break;
+    }
+
+    default:
+      // PAUSA cai aqui de propósito: o véu cobre a tela e o que estava embaixo
+      // continua embaixo. Trocar de tela ao pausar perderia o contexto de onde
+      // o jogo parou.
+      break;
+  }
+}
+
+connect();
+</script>
+</body>
+</html>

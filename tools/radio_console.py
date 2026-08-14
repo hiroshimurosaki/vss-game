@@ -455,12 +455,17 @@ def main():
 
     port = args.port
     if not os.path.exists(port):
-        fallback = '/dev/ttyUSB0'
-        if os.path.exists(fallback):
-            print(f'{port} não existe; usando {fallback}', file=sys.stderr)
-            port = fallback
+        # ttyACM na lista porque a ponte pode ser um Uno oficial, que enumera
+        # pelo ATmega16U2 e nunca aparece como ttyUSB. Isto é chute pelo nome do
+        # device, não identificação: se houver mais de uma placa plugada, passe
+        # --port $(./tools/porta.sh), que decide pelo banner de boot.
+        candidatos = [c for c in ('/dev/ttyUSB0', '/dev/ttyACM0')
+                      if os.path.exists(c)]
+        if candidatos:
+            print(f'{port} não existe; usando {candidatos[0]}', file=sys.stderr)
+            port = candidatos[0]
         else:
-            sys.exit(f'sem serial: nem {port} nem {fallback} existem.\n'
+            sys.exit(f'sem serial: nem {port} nem {candidatos} existem.\n'
                      'A ponte está ligada? No Pop!_OS o brltty pode roubar o '
                      'CH340 — ver CLAUDE.md.')
 

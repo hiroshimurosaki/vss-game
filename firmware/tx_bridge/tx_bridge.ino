@@ -1,16 +1,29 @@
-// tx_bridge — ponte serial -> rádio (Arduino Nano + nRF24L01)
+// tx_bridge — ponte serial -> rádio (Arduino Nano ou Uno + nRF24L01)
 //
 // Fica ligado no notebook por USB. Lê pacotes de 14 bytes que o nó ROS
 // `radio_communication` escreve na serial e retransmite por rádio para os robôs.
 // Não interpreta o conteúdo: só valida e repassa.
 //
-// Wiring: nRF24L01 CE=D6, CSN=D10
+// Wiring: nRF24L01 CE=D6, CSN=D10, SCK=D13, MOSI=D11, MISO=D12, VCC=3V3, IRQ=NC
+//
+// NANO E UNO SÃO A MESMA PLACA AQUI. Mesmo ATmega328p a 16 MHz, mesmo optiboot,
+// e o SPI cai nos mesmos D11/D12/D13 nas duas — então este arquivo roda nos dois
+// sem uma linha de diferença, e o binário é o mesmo. Muda só o FQBN do
+// arduino-cli (`arduino:avr:uno`, que o `tools/gravar.sh` deduz sozinho pelo
+// nome da porta) e onde a placa aparece: Uno OFICIAL é /dev/ttyACM* (ATmega16U2),
+// Nano e Uno clone são /dev/ttyUSB* (CH340).
+//
+// O que muda de verdade é a alimentação do módulo: no Uno oficial o 3V3 vem de
+// um LDO de 50 mA compartilhado, e o nRF24 puxa picos curtos que o regulador não
+// acompanha. Sem um capacitor colado no VCC/GND do módulo o sintoma é rádio que
+// enumera e responde `isChipConnected()` mas entrega mal, ou trava depois de um
+// tempo. VCC NUNCA no 5V — o rádio morre; só as entradas dele toleram 5 V.
 
 #include <RF24.h>
 #include <SPI.h>
 #include <stddef.h>
 #include <stdint.h>
-
+  
 // Ligável por -DDEBUG_TX=1 na compilação, sem editar o arquivo. Com isso a ponte
 // confirma pela serial cada pacote que ela repassou ao rádio, que é o que separa
 // "a ponte não recebeu" de "a ponte recebeu e mandou".

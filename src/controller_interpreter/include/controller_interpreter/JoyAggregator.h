@@ -18,8 +18,14 @@ public:
 private:
 
     int32_t _numRobots;
+    double _inputTimeout;
 
     std::map<int32_t, sensor_msgs::msg::Joy> _lastJoys;
+
+    // Quando cada robô foi visto pela última vez, e se já está mudo. O segundo
+    // existe só para o aviso sair uma vez por transição, não a 50 Hz.
+    std::map<int32_t, rclcpp::Time> _lastSeen;
+    std::map<int32_t, bool> _stale;
 
     void _joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg, int32_t robotId);
     void _timerCallback();

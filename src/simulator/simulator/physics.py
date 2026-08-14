@@ -93,6 +93,10 @@ class World:
     robots: dict = dc_field(default_factory=dict)
     ball: Ball = dc_field(default_factory=Ball)
 
+    # Quantos robôs existem em campo. 1 é o modo duelo, em que o robô 0 é o
+    # único e os dois motoristas se revezam nele.
+    robot_count: int = 2
+
     # Preenchido pelo step() quando a bola entra no gol: 'left' ou 'right'.
     goal_event: str = None
 
@@ -101,12 +105,17 @@ def _clamp(value, low, high):
     return max(low, min(high, value))
 
 
-def make_default_world(field_spec=None, robot_spec=None, ball_spec=None) -> World:
-    """Campo com dois robôs em posição de kickoff: IA na esquerda, jogador na direita."""
+def make_default_world(field_spec=None, robot_spec=None, ball_spec=None,
+                       robot_count=2) -> World:
+    """Campo em posição de kickoff: IA na esquerda, jogador na direita.
+
+    `robot_count=1` é o modo duelo: só o robô 0 entra em campo.
+    """
     world = World(
         field=field_spec or FieldSpec(),
         robot_spec=robot_spec or RobotSpec(),
         ball_spec=ball_spec or BallSpec(),
+        robot_count=robot_count,
     )
     reset_positions(world)
     return world
@@ -117,8 +126,21 @@ def reset_positions(world: World):
     f = world.field
 
     world.robots[0] = Robot(id=0, x=-f.half_length * 0.55, y=0.0, theta=0.0)
-    world.robots[1] = Robot(id=1, x=+f.half_length * 0.55, y=0.0, theta=math.pi)
 
+    # No modo duelo há um robô só em campo, e ele é o 0. Criar o 1 assim mesmo
+    # deixaria um obstáculo parado bem na frente do gol que os dois motoristas
+    # atacam — o teste no simulador mediria outra coisa que não o duelo.
+    if world.robot_count > 1:
+        world.robots[1] = Robot(id=1, x=+f.half_length * 0.55, y=0.0,
+                                theta=math.pi)
+    else:
+        world.robots.pop(1, None)
+
+    reset_ball(world)
+
+
+def reset_ball(world: World):
+    """Só a bola volta ao centro. Os robôs ficam onde estão."""
     world.ball = Ball()
     world.goal_event = None
 

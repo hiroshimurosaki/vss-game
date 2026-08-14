@@ -143,6 +143,165 @@
 
   .count-tag { font-size: var(--fs-sm); color: var(--muted); font-family: var(--mono); }
   .count-tag.done { color: var(--ok); }
+
+  /* ── Qualidade da cor ─────────────────────────────────────────────────────
+
+     Tudo daqui para baixo existe para responder uma pergunta que a tela não
+     respondia: "o limiar que eu acabei de pôr está confortável ou está
+     roçando?". As duas situações são IDÊNTICAS na imagem — nas duas o robô
+     aparece detectado — e só a segunda some no meio da partida quando alguém
+     passa perto da luminária.
+
+     A escolha de forma segue disso: número sozinho não deixa comparar, então
+     tudo o que tem faixa confortável conhecida vira BARRA, e a barra cheia
+     quer dizer "tem folga de sobra". Olhar as quatro cores é ver quatro
+     barras, não ler doze números.                                          */
+
+  .chips {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
+  }
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2);
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: var(--text);
+  }
+  .chip:hover { background: var(--surface-3); }
+  .chip.sel  { border-color: var(--ciano); box-shadow: inset 0 0 0 1px var(--ciano-45); }
+  .chip .sw {
+    width: 20px; height: 20px; flex: none;
+    border-radius: 5px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface-3);
+  }
+  .chip .nm  { font-size: var(--fs-sm); font-weight: 650; min-width: 0; flex: 1; }
+  .chip .sub { display: block; font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
+  .chip .sc  { font-family: var(--mono); font-size: var(--fs-md); font-weight: 700; }
+
+  .ok-txt   { color: var(--ok); }
+  .warn-txt { color: var(--warn); }
+  .bad-txt  { color: var(--danger); }
+
+  /* Medidor: rótulo, barra, valor. */
+  .gauge {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr) 62px;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: 5px 0;
+  }
+  .gauge > label  { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
+  .gauge > output { font-family: var(--mono); font-size: var(--fs-xs); text-align: right; }
+  .gauge .g {
+    position: relative;
+    height: 7px;
+    border-radius: var(--r-full);
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+  .gauge .g > i {
+    display: block; height: 100%;
+    border-radius: var(--r-full);
+    background: var(--ok);
+    transition: width var(--dur) var(--ease);
+  }
+  .gauge.warn .g > i { background: var(--warn); }
+  .gauge.bad  .g > i { background: var(--danger); }
+
+  /* ── Faixa de matiz ──────────────────────────────────────────────────────
+     O círculo cromático esticado, com a faixa de cada cor desenhada em cima.
+     É onde a colisão entre duas cores aparece antes de virar bug: duas barras
+     que se tocam aqui são duas cores que vão trocar de identidade quando a
+     luz mudar. Foi assim que o azul-escuro morreu como cor de time.        */
+
+  .hue-wrap { margin-top: var(--sp-3); }
+  .hue-bar {
+    position: relative;
+    height: 22px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    background: linear-gradient(to right,
+      hsl(0 92% 52%), hsl(60 92% 52%), hsl(120 92% 42%), hsl(180 92% 46%),
+      hsl(240 92% 58%), hsl(300 92% 52%), hsl(358 92% 52%));
+  }
+  .hue-row {
+    position: relative;
+    height: 15px;
+    margin-top: 3px;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+  }
+  .hue-row > .seg {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--ciano-45);
+    border: 1px solid var(--ciano);
+    border-radius: 3px;
+  }
+  .hue-row.sel { background: var(--surface-3); }
+  .hue-row.sel > .seg { background: var(--menta-45); border-color: var(--menta); }
+  .hue-row > .tick {
+    position: absolute; top: -2px; bottom: -2px;
+    width: 2px;
+    background: var(--text);
+  }
+  .hue-row > .lbl {
+    position: absolute; left: 5px; top: 0;
+    font-family: var(--mono); font-size: 9.5px; line-height: 15px;
+    color: var(--text); text-shadow: 0 0 3px var(--bg-deep);
+    pointer-events: none;
+  }
+
+  /* ── Nuvem S×V ───────────────────────────────────────────────────────────
+     O fundo é a cor real em cada saturação e brilho, o retângulo é o que os
+     limiares aceitam e os pontos são os pixels do objeto agora. Nuvem colada
+     na borda do retângulo é a mesma informação da "folga", só que a barra
+     diz QUANTO e isto diz DE QUE LADO — o que decide qual slider mexer.    */
+
+  .sv-wrap { display: flex; gap: var(--sp-3); align-items: flex-start; margin-top: var(--sp-3); }
+  #sv { width: 168px; height: 168px; flex: none; border-radius: var(--r-sm); border: 1px solid var(--line); }
+  .sv-legend { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+
+  /* ── Sonda sob o cursor ──────────────────────────────────────────────── */
+
+  .probe {
+    position: absolute;
+    left: var(--sp-3); bottom: var(--sp-3);
+    z-index: 6;
+    display: none;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--surface-1);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-float);
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    white-space: nowrap;
+  }
+  .probe.on { display: flex; }
+  .probe .sw { width: 26px; height: 26px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); }
+  .probe .tag {
+    padding: 1px 6px;
+    border-radius: var(--r-full);
+    border: 1px solid var(--line);
+    font-size: var(--fs-xs);
+    color: var(--muted);
+  }
+  .probe .tag.in { border-color: var(--menta-45); color: var(--ok); }
+
+  .issues { margin: var(--sp-3) 0 0; padding-left: var(--sp-4); font-size: var(--fs-sm); color: var(--warn); }
+  .issues li { margin: 4px 0; }
+  .issues.clean { color: var(--ok); list-style: none; padding-left: 0; }
 </style>
 </head>
 <body>
@@ -157,6 +316,11 @@
 <main>
   <div class="stage">
     <div class="armed-hint" id="armedHint"><span class="vss-dot pulsing"></span> <span id="armedText"></span></div>
+    <div class="probe" id="probe">
+      <span class="sw" id="probeSw"></span>
+      <span id="probeHsv">—</span>
+      <span id="probeTags"></span>
+    </div>
     <div class="viewport">
       <img id="view" src="/stream.mjpg" alt="câmera">
     </div>
@@ -215,18 +379,69 @@
       <div class="step-title">
         <span class="step-n">3</span>
         <h2>Cores</h2>
+        <span class="vss-spacer"></span>
+        <span class="count-tag" id="worst">—</span>
       </div>
-      <div class="row" style="margin-top:0">
+
+      <div class="chips" id="chips"></div>
+      <p class="vss-hint">
+        A nota é <b>folga</b> (45), <b>limpeza</b> (30) e <b>forma da máscara</b>
+        (25). Serve para comparar as quatro entre si e para ver a barra reagir
+        enquanto se arrasta o slider — não é probabilidade de nada.
+      </p>
+
+      <div class="row">
         <label for="color">alvo</label>
         <select id="color" class="vss-select"></select>
         <button class="vss-btn" id="armPick">Clicar na cor</button>
       </div>
+      <div class="row">
+        <button class="vss-btn sm" id="viewImg">imagem</button>
+        <button class="vss-btn sm" id="viewMask">máscara</button>
+        <span class="vss-spacer"></span>
+        <span class="vss-hint" style="margin:0">passe o mouse no vídeo para sondar o HSV</span>
+      </div>
       <p class="vss-hint">
         Escolha o alvo, aperte <b>Clicar na cor</b> e clique no objeto no
-        vídeo. A faixa HSV sai da amostra — não precisa adivinhar slider. Os
-        sliders abaixo ficam para ajuste fino.
+        vídeo. A faixa HSV sai da amostra — não precisa adivinhar slider. Em
+        <b>máscara</b>, verde é blob aceito e laranja é blob fora da faixa de
+        área: etiqueta acesa pela metade é faixa apertada, meio campo aceso é
+        faixa larga.
       </p>
+
+      <div id="quality"></div>
+
+      <div class="sv-wrap">
+        <canvas id="sv" width="168" height="168"></canvas>
+        <div class="sv-legend">
+          <b>S × V</b><br>
+          fundo: a cor real<br>
+          moldura: o que passa<br>
+          pontos: os pixels do objeto agora<br><br>
+          Nuvem encostada na moldura = o limiar daquele lado é o que vai
+          falhar primeiro.
+        </div>
+      </div>
+
+      <div class="hue-wrap">
+        <div class="hue-bar"></div>
+        <div id="hueRows"></div>
+      </div>
+
+      <ul class="issues" id="issues"></ul>
+
       <div id="sliders" style="margin-top:var(--sp-3)"></div>
+    </div>
+
+    <!-- Retrato da amostra ─────────────────────────────────────────────── -->
+    <div class="vss-card" id="samplecard" style="display:none">
+      <h2>O ponto que você clicou</h2>
+      <p class="vss-hint" style="margin-top:0">
+        A faixa é tão boa quanto a amostra. Clique na borda da etiqueta e ela
+        abre para caber o feltro junto — e isso só apareceria depois, como
+        detecção que pisca.
+      </p>
+      <div id="sample"></div>
     </div>
 
     <!-- 4 ─────────────────────────────────────────────────────────────── -->
@@ -256,11 +471,17 @@
 const view = document.getElementById('view');
 const statusEl = document.getElementById('status');
 let ws, cfg = null, corners = [], current = null, mode = null;
+let report = null, maskOn = false;
 
 const FIELDS = [['h_lo',0,179],['h_hi',0,179],['s_min',0,255],['s_max',0,255],
                 ['v_min',0,255],['v_max',0,255],['min_area',0,4000],['max_area',0,40000]];
 const CAM = [['exposure_time_absolute',3,2047],['gain',0,255],
              ['white_balance_temperature',2000,6500]];
+
+// Folga considerada confortável em cada eixo. Tem que bater com o COMFORT do
+// detector.py — é o mesmo número, e é o que faz a barra cheia querer dizer a
+// mesma coisa aqui e na nota que vem do nó.
+const COMFORT = {h: 8, s: 30, v: 30};
 
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
@@ -273,6 +494,9 @@ function connect() {
     else if (m.type === 'note')  say(m.msg);
     else if (m.type === 'error') say('erro: ' + m.msg, 'danger');
     else if (m.type === 'stats') showStats(m.stats);
+    else if (m.type === 'report') { report = m.report; renderQuality(); }
+    else if (m.type === 'probe')  showProbe(m);
+    else if (m.type === 'sample') showSample(m.sample);
   };
 }
 
@@ -302,12 +526,24 @@ function initAll() {
       const o = document.createElement('option'); o.value = o.textContent = n;
       sel.appendChild(o);
     }
-    sel.onchange = () => { current = sel.value; buildSliders(); };
+    sel.onchange = () => selectColor(sel.value);
     current = sel.value = Object.keys(cfg.colors)[0];
   }
-  buildSliders(); buildCam();
+  buildSliders(); buildCam(); buildChips();
+  renderQuality();
   corners = cfg.corners_px.map(p => [p[0], p[1]]);
   showCornerCount();
+}
+
+function selectColor(n) {
+  current = n;
+  document.getElementById('color').value = n;
+  buildSliders();
+  renderQuality();
+  // A máscara é sempre de UMA cor: trocar de alvo tem que trocar o que o
+  // vídeo mostra, senão fica-se ajustando o slider de uma cor olhando a
+  // máscara de outra — e isso passa despercebido por um bom tempo.
+  if (maskOn) setView(true);
 }
 
 function showCornerCount() {
@@ -331,7 +567,14 @@ function buildSliders() {
   const box = document.getElementById('sliders'); box.innerHTML = '';
   const spec = cfg.colors[current];
   for (const [k,lo,hi] of FIELDS)
-    slider(box, k, lo, hi, spec[k], v => { spec[k]=v; send({type:'color',name:current,spec}); });
+    slider(box, k, lo, hi, spec[k], v => {
+      spec[k] = v;
+      send({type:'color', name:current, spec});
+      // A moldura e a régua saem do cfg local, então acompanham o dedo. Os
+      // números (folga, nota) só mudam no próximo relatório — é o preço de
+      // eles serem medidos no frame de verdade, e não estimados aqui.
+      drawSV(); renderHue();
+    });
 }
 
 function buildCam() {
@@ -339,6 +582,261 @@ function buildCam() {
   const v = cfg.v4l2 || {};
   for (const [k,lo,hi] of CAM)
     if (k in v) slider(box, k, lo, hi, v[k], val => send({type:'v4l2',name:k,value:val}));
+}
+
+/* ═══ Qualidade da cor ═══════════════════════════════════════════════════ */
+
+const rgbCss = a => `rgb(${a[0]},${a[1]},${a[2]})`;
+const grade  = s => s >= 70 ? 'ok-txt' : s >= 45 ? 'warn-txt' : 'bad-txt';
+const pct    = f => (f == null ? '—' : Math.round(f * 100) + '%');
+
+function gauge(label, val, max, text) {
+  const f = Math.max(0, Math.min(1, (val || 0) / max));
+  const cls = f >= 0.5 ? '' : f >= 0.25 ? ' warn' : ' bad';
+  return `<div class="gauge${cls}"><label>${label}</label>` +
+         `<span class="g"><i style="width:${(f*100).toFixed(0)}%"></i></span>` +
+         `<output>${text}</output></div>`;
+}
+
+function buildChips() {
+  const box = document.getElementById('chips');
+  box.innerHTML = Object.keys(cfg.colors).map(n => `
+    <button class="chip" data-name="${n}">
+      <span class="sw"></span>
+      <span class="nm">${n}<span class="sub">—</span></span>
+      <span class="sc">—</span>
+    </button>`).join('');
+  for (const el of box.children) el.onclick = () => selectColor(el.dataset.name);
+}
+
+// Uma função só para tudo o que depende do relatório: as quatro fichas, o
+// painel da cor escolhida, a régua de matiz e a nuvem S×V. Elas contam a
+// mesma história em escalas diferentes e desencontrá-las (uma atualizada,
+// outra não) seria pior do que redesenhar as quatro a 3 Hz.
+function renderQuality() {
+  if (!cfg) return;
+  renderChips();
+  renderPanel();
+  renderHue();
+  drawSV();
+}
+
+function renderChips() {
+  const box = document.getElementById('chips');
+  let worst = null;
+  for (const el of box.children) {
+    const n = el.dataset.name;
+    const r = report && report.colors && report.colors[n];
+    el.classList.toggle('sel', n === current);
+    if (!r) continue;
+
+    const seen = (report.seen || {})[n] || {};
+    const score = r.main_area ? r.score : 0;
+    el.querySelector('.sw').style.background = r.rgb ? rgbCss(r.rgb) : '';
+    el.querySelector('.sub').textContent =
+      `${r.main_area} px · visto ${pct(seen.seen)}`;
+    const sc = el.querySelector('.sc');
+    sc.textContent = r.main_area ? score : '✗';
+    sc.className = 'sc ' + grade(score);
+    if (worst === null || score < worst[1]) worst = [n, score];
+  }
+  const w = document.getElementById('worst');
+  w.textContent = worst ? `pior: ${worst[0]} (${worst[1]})` : '—';
+  w.className = 'count-tag ' + (worst ? grade(worst[1]) : '');
+}
+
+function renderPanel() {
+  const box = document.getElementById('quality');
+  const r = report && report.colors && report.colors[current];
+  const spec = cfg.colors[current];
+  if (!r) { box.innerHTML = '<p class="vss-hint">medindo…</p>'; return; }
+
+  const seen = (report.seen || {})[current] || {};
+  const out = [gauge('nota', r.score, 100, `${r.score}/100`)];
+
+  if (r.main_area) {
+    out.push(gauge('folga H', r.margin_h, COMFORT.h, `${r.margin_h}°`));
+    out.push(gauge('folga S', r.margin_s, COMFORT.s, r.margin_s));
+    out.push(gauge('folga V', r.margin_v, COMFORT.v, r.margin_v));
+    // Solidez útil vive entre 0,70 e 1,00; esticar a barra nessa janela é o
+    // que faz a diferença entre 0,88 e 0,96 aparecer.
+    out.push(gauge('solidez', (r.solidity - 0.70) / 0.30, 1, r.solidity.toFixed(2)));
+    out.push(gauge('limpeza', 1 - Math.min(1, r.stray / Math.max(r.main_area, 1)),
+                   1, `${r.stray} px fora`));
+  }
+  out.push(gauge('visto', seen.seen, 1, pct(seen.seen)));
+
+  const nblob = `${r.n_blobs}${r.n_blobs === r.expected ? '' : ` (esperava ${r.expected})`}`;
+  out.push(`<table class="vss-table" style="margin-top:var(--sp-3)">
+    <tr><td>maior blob</td>
+        <td class="${r.main_area ? 'ok' : 'bad'}">${r.main_area} px</td></tr>
+    <tr><td>faixa de área</td><td>${spec.min_area} – ${spec.max_area}</td></tr>
+    <tr><td>blobs válidos</td>
+        <td class="${r.n_blobs === r.expected ? 'ok' : 'bad'}">${nblob}</td></tr>
+    <tr><td>fora da área</td>
+        <td>${r.rejected}× · ${r.rejected_area} px</td></tr>
+    <tr><td>visto cheio</td><td>${pct(seen.full)} dos ${seen.n || 0} frames</td></tr>
+  </table>`);
+
+  box.innerHTML = out.join('');
+  renderIssues(r);
+}
+
+function renderIssues(r) {
+  const el = document.getElementById('issues');
+  const list = (r.issues || []).slice();
+
+  // Colisão entra na mesma lista porque é o mesmo tipo de problema para quem
+  // está calibrando — "esta cor não vai aguentar" — e separar em outro canto
+  // fez com que ninguém olhasse.
+  for (const o of (report.overlap || []))
+    if (o.a === current)
+      list.push(`${pct(o.frac)} dos pixels desta cor também entram em ` +
+                `\`${o.b}\` — as duas brigam pelo mesmo pixel`);
+
+  if (!list.length) {
+    el.className = 'issues clean';
+    el.innerHTML = r.main_area ? '<li>✓ sem ressalvas nesta cor</li>' : '';
+    return;
+  }
+  el.className = 'issues';
+  el.innerHTML = list.map(t => `<li>${t}</li>`).join('');
+}
+
+function renderHue() {
+  const box = document.getElementById('hueRows');
+  box.innerHTML = Object.keys(cfg.colors).map(n => {
+    const s = cfg.colors[n];
+    // Faixa que dá a volta no zero vira dois pedaços — o mesmo caso especial
+    // do ColorSpec.mask, e é justamente a bola que cai nele.
+    const segs = s.h_lo <= s.h_hi
+      ? [[s.h_lo, s.h_hi - s.h_lo]]
+      : [[s.h_lo, 180 - s.h_lo], [0, s.h_hi]];
+    const r = report && report.colors && report.colors[n];
+    const tick = (r && r.mean)
+      ? `<span class="tick" style="left:${(r.mean[0]/180*100).toFixed(2)}%"></span>` : '';
+    return `<div class="hue-row${n === current ? ' sel' : ''}">` +
+      segs.map(([a, w]) =>
+        `<span class="seg" style="left:${(a/180*100).toFixed(2)}%;` +
+        `width:${(w/180*100).toFixed(2)}%"></span>`).join('') +
+      tick + `<span class="lbl">${n} · ${s.h_lo}–${s.h_hi}</span></div>`;
+  }).join('');
+}
+
+/* ── Nuvem S×V ───────────────────────────────────────────────────────────
+   O fundo custa 168² conversões, então fica em cache por matiz: enquanto o
+   slider mexido for S, V ou área, só os pontos são redesenhados.          */
+
+const svCanvas = document.getElementById('sv');
+let svBg = null, svBgHue = -1;
+
+function hsv2rgb(h, s, v) {
+  h = ((h % 180) + 180) % 180 * 2; s /= 255; v /= 255;
+  const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
+  let r = 0, g = 0, b = 0;
+  if      (h <  60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else              { r = c; b = x; }
+  return [(r+m)*255, (g+m)*255, (b+m)*255];
+}
+
+function drawSV() {
+  const N = svCanvas.width, ctx = svCanvas.getContext('2d');
+  const spec = cfg.colors[current];
+  const r = report && report.colors && report.colors[current];
+  const span = ((spec.h_hi - spec.h_lo) % 180 + 180) % 180;
+  const hue = Math.round((r && r.mean) ? r.mean[0] : (spec.h_lo + span / 2) % 180);
+
+  if (hue !== svBgHue) {
+    const img = ctx.createImageData(N, N);
+    for (let y = 0; y < N; y++) {
+      const v = 255 * (1 - y / (N - 1));
+      for (let x = 0; x < N; x++) {
+        const [R, G, B] = hsv2rgb(hue, 255 * x / (N - 1), v);
+        const i = (y * N + x) * 4;
+        img.data[i] = R; img.data[i+1] = G; img.data[i+2] = B; img.data[i+3] = 255;
+      }
+    }
+    svBg = img; svBgHue = hue;
+  }
+  ctx.putImageData(svBg, 0, 0);
+
+  const sx = s => s / 255 * N;
+  const sy = v => (1 - v / 255) * N;
+
+  if (r && r.scatter) {
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    for (const [, s, v] of r.scatter) ctx.fillRect(sx(s) - 1, sy(v) - 1, 2, 2);
+  }
+
+  const x0 = sx(spec.s_min), x1 = sx(spec.s_max);
+  const y0 = sy(spec.v_max), y1 = sy(spec.v_min);
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.55)';
+  ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff';
+  ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+}
+
+/* ── Sonda e retrato da amostra ──────────────────────────────────────── */
+
+function showProbe(m) {
+  document.getElementById('probe').classList.add('on');
+  document.getElementById('probeSw').style.background = rgbCss(m.rgb);
+  document.getElementById('probeHsv').textContent =
+    `H ${m.hsv[0]}  S ${m.hsv[1]}  V ${m.hsv[2]}`;
+  document.getElementById('probeTags').innerHTML = m.colors.map(c => {
+    const inside = c.h && c.s && c.v;
+    const miss = ['h','s','v'].filter(k => !c[k]).join('').toUpperCase();
+    return `<span class="tag${inside ? ' in' : ''}">${c.name}` +
+           `${inside ? ' ✓' : ' ✗' + miss}</span>`;
+  }).join(' ');
+}
+
+function showSample(s) {
+  document.getElementById('samplecard').style.display = '';
+  const spec = cfg.colors[s.name];
+  const rows = [
+    gauge('cobertura', s.coverage, 1, pct(s.coverage)),
+    // Espalhamento é o inverso: pouco é bom. A barra mostra o quanto SOBRA
+    // até 12°, que é onde a amostra deixa de ser uma cor só.
+    gauge('homogen.', (12 - s.spread) / 12, 1, `${s.spread}° de matiz`),
+  ];
+  if (s.near_deg != null)
+    rows.push(gauge('distância', s.near_deg / 20, 1, `${s.near_deg}° de ${s.near}`));
+
+  const issues = s.issues.length
+    ? `<ul class="issues">${s.issues.map(t => `<li>${t}</li>`).join('')}</ul>`
+    : '<ul class="issues clean"><li>✓ amostra limpa</li></ul>';
+
+  document.getElementById('sample').innerHTML = `
+    <div style="display:flex;gap:var(--sp-3);align-items:center">
+      <span style="width:52px;height:52px;border-radius:var(--r-sm);
+                   border:1px solid var(--line-strong);
+                   background:${rgbCss(s.rgb)}"></span>
+      <div class="vss-mono" style="font-size:var(--fs-sm);line-height:1.6">
+        <b>${s.name}</b> · ${s.pixels} px<br>
+        H ${s.mean[0]}  S ${s.mean[1]}  V ${s.mean[2]}<br>
+        <span style="color:var(--muted)">S ${s.p10[0]}–${s.p90[0]} ·
+        V ${s.p10[1]}–${s.p90[1]}</span>
+      </div>
+    </div>
+    <div style="margin-top:var(--sp-3)">${rows.join('')}</div>
+    <p class="vss-hint">faixa gerada: H ${spec.h_lo}–${spec.h_hi},
+       S≥${spec.s_min}, V≥${spec.v_min}</p>
+    ${issues}`;
+}
+
+function setView(mask) {
+  maskOn = mask;
+  document.getElementById('viewImg').classList.toggle('on', !mask);
+  document.getElementById('viewMask').classList.toggle('on', mask);
+  // O cache-buster não é paranoia: sem ele o navegador reaproveita o MJPEG
+  // que já está aberto e a troca de cor não chega ao servidor.
+  view.src = (mask ? `/stream.mjpg?mask=${encodeURIComponent(current)}&t=`
+                   : '/stream.mjpg?t=') + Date.now();
 }
 
 // O stream sai em metade da resolução; o clique precisa voltar à escala do
@@ -392,6 +890,22 @@ document.getElementById('armCorners').onclick =
 document.getElementById('reloc').onclick = () => { send({type:'relocate'}); say('alinhando…'); };
 document.getElementById('save').onclick  = () => send({type:'save'});
 
+document.getElementById('viewImg').onclick  = () => setView(false);
+document.getElementById('viewMask').onclick = () => setView(true);
+
+// Sonda sob o cursor. Limitada a ~12 Hz: o servidor responde a cada mensagem
+// copiando o frame, e um mousemove não limitado dispara centenas por segundo.
+let probeAt = 0;
+view.addEventListener('mousemove', ev => {
+  const now = performance.now();
+  if (now - probeAt < 80) return;
+  probeAt = now;
+  const [x, y] = toFrame(ev);
+  send({type: 'probe', x, y});
+});
+view.addEventListener('mouseleave',
+  () => document.getElementById('probe').classList.remove('on'));
+
 // Esc desarma. Sair de um modo armado sem ter que achar o botão de novo é o
 // que evita o clique perdido no vídeo.
 window.addEventListener('keydown', ev => {
@@ -400,6 +914,11 @@ window.addEventListener('keydown', ev => {
 
 connect();
 setInterval(() => send({type:'stats'}), 1000);
+
+// 3 Hz é rápido o bastante para a barra responder enquanto se arrasta o
+// slider, e lento o bastante para o custo (uma medição em cima do frame
+// inteiro) não roubar taxa da detecção. Aba escondida não pede nada.
+setInterval(() => { if (!document.hidden) send({type:'report', focus: current}); }, 330);
 </script>
 </body>
 </html>

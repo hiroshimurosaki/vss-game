@@ -4,10 +4,22 @@ namespace controller_interpreter {
 
 KeyboardInput::KeyboardInput() : Node("keyboard_input") {
 
+    // Qual robô este teclado dirige. Era fixo em /joy_0, o que amarrava o
+    // teclado ao robô da IA: não dava para pôr um humano de teclado contra a
+    // IA sem desligar a IA antes. Com o parâmetro, o teclado ocupa qualquer
+    // vaga do /joy_list — inclusive a do visitante, enquanto o gamepad ocupa a
+    // outra.
+    this->declare_parameter("robot_id", 0);
+    _robotId = static_cast<int32_t>(this->get_parameter("robot_id").as_int());
+
+    const std::string topic = "/joy_" + std::to_string(_robotId);
+
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 
+    // O id vai no título porque com dois controles em cima da mesa a pergunta
+    // "esta janela é de qual robô?" aparece toda vez.
     _window = SDL_CreateWindow(
-        "Controle do robô via teclado",
+        ("Teclado -> robô " + std::to_string(_robotId)).c_str(),
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         600, 80,
         SDL_WINDOW_SHOWN
@@ -15,17 +27,18 @@ KeyboardInput::KeyboardInput() : Node("keyboard_input") {
 
     _renderStatus();
 
-    _inputPublisher = 
-        this->create_publisher<sensor_msgs::msg::Joy>("/joy_0", 10);
-    
+    _inputPublisher =
+        this->create_publisher<sensor_msgs::msg::Joy>(topic, 10);
+
     _timer = this->create_wall_timer(
         std::chrono::milliseconds(50),
         [this]() { _keyboardCallback(); }
     );
 
     RCLCPP_INFO(this->get_logger(),
-            "KeyboardInput inicializado. "
-            "Acesse a janela 'Controle do robô via teclado' para iniciar a captura do teclado.");
+            "KeyboardInput no robô %d (%s). "
+            "Clique na janela 'Teclado -> robô %d' para iniciar a captura.",
+            _robotId, topic.c_str(), _robotId);
 
 }
 
@@ -50,9 +63,11 @@ void KeyboardInput::_renderStatus() {
 
     SDL_UpdateWindowSurface(_window);
 
+    const std::string quem = "Teclado -> robô " + std::to_string(_robotId);
+
     std::string title = _capturing
-        ? "Controle do robô via teclado | Capturando | Pressione ESC para pausar"
-        : "Controle do robô via teclado | Pausado | Pressione ESC para retomar";
+        ? quem + " | Capturando | Pressione ESC para pausar"
+        : quem + " | Pausado | Pressione ESC para retomar";
 
     SDL_SetWindowTitle(_window, title.c_str());
 
@@ -104,11 +119,9 @@ void KeyboardInput::_keyboardCallback() {
     msg.axes.resize(6, 0.0f);
     msg.buttons.resize(3, 0);
 
-    // Emulamos a convenção "signed" dos gatilhos: solto = +1.0, apertado = -1.0.
-    // O neutro precisa ser explícito — deixar em 0.0 seria lido como meio
-    // acelerado e o robô sairia andando sozinho.
-    msg.axes[4] = 1.0f;
-    msg.axes[5] = 1.0f;
+    // Emulamos a convenção "sdl" dos gatilhos: solto = 0.0, fundo = -1.0 — a
+    // mesma que o game_controller_node produz. O neutro é o próprio zero do
+    // array, então não há o que lembrar de preencher.
 
     if(_capturing) {
 

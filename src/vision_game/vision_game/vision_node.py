@@ -18,6 +18,7 @@ Os launch files já cuidam disso.
 """
 
 import asyncio
+import collections
 import json
 import math
 import os
@@ -37,7 +38,8 @@ from aiohttp import web, WSMsgType
 from ament_index_python.packages import get_package_share_directory
 
 from . import config as cfgmod
-from .detector import Detector, pick_color, relocate_corners
+from .detector import (Detector, EXPECTED_BLOBS, hsv_to_rgb, pick_color,
+                       relocate_corners, sample_report)
 
 
 class _FFmpegCapture:
@@ -193,6 +195,16 @@ class VisionNode(Node):
         self._det = None
         self._lock = threading.Lock()
         self._stats = {'fps': 0.0, 'frames': 0, 'ball_miss': 0, 'robot_miss': 0}
+
+        # Histórico curto de quantos blobs cada COR produziu, por frame.
+        #
+        # Existe porque o retrato instantâneo mente na direção mais cara: uma
+        # faixa no limite acerta a maioria dos frames e falha alguns, e quem
+        # está calibrando vê a etiqueta detectada, dá por bom, e descobre o
+        # problema na partida. 120 frames são ~4 s — o bastante para o
+        # "pisca" aparecer como 93% em vez de 100%.
+        self._seen = {name: collections.deque(maxlen=120)
+                      for name in EXPECTED_BLOBS}
 
         self._stop = threading.Event()
         self._cap_thread = threading.Thread(target=self._capture_loop, daemon=True)
@@ -399,6 +411,8 @@ class VisionNode(Node):
             with self._lock:
                 self._frame = frame
                 self._det = det
+                for name, hist in self._seen.items():
+                    hist.append(int(det.counts.get(name, 0)))
             self._publish(det, t)
 
             n_fps += 1
@@ -453,7 +467,75 @@ class VisionNode(Node):
 
     # ── GUI de calibração ───────────────────────────────────────────────
 
-    def _draw_overlay(self, frame, det):
+    def _draw_mask(self, frame, name):
+        """A máscara de uma cor, sobre a imagem real.
+
+        Escurece tudo e devolve o brilho original só onde a faixa acende. É
+        melhor do que pintar a máscara de uma cor chapada por um motivo
+        prático: assim dá para ver **o que** foi aceso — se o que sobrou tem
+        forma de etiqueta, de sombra do robô ou de risco do feltro — e não só
+        que algo foi.
+
+        Verde é blob aceito pela faixa de área; vermelho é rejeitado, com a
+        área escrita ao lado. Ver o rejeitado é o ponto: "não detecta nada"
+        com um blob vermelho de 140 px é `min_area` alto demais, não cor
+        errada, e esses dois se confundiam.
+        """
+        try:
+            mv = self.detector.mask_view(frame, name)
+        except Exception:
+            return frame.copy()
+
+        m, (ox, oy) = mv['mask'], mv['offset']
+        acc, rej = mv['accepted'], mv['rejected']
+
+        vis = (frame * 0.28).astype(np.uint8)
+        h, w = m.shape[:2]
+        sub, orig = vis[oy:oy + h, ox:ox + w], frame[oy:oy + h, ox:ox + w]
+        sub[m > 0] = orig[m > 0]
+
+        cv2.rectangle(vis, (ox, oy), (ox + w, oy + h), (90, 90, 90), 1)
+
+        for key, color, thick in (('acc_mask', (0, 255, 0), 2),
+                                  ('rej_mask', (0, 120, 255), 1)):
+            cnts, _ = cv2.findContours(mv[key], cv2.RETR_EXTERNAL,
+                                       cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(vis, [c + np.int32([ox, oy]) for c in cnts],
+                             -1, color, thick)
+
+        spec = self.detector.colors[name]
+
+        def label(text, org, color, scale):
+            # Contorno preto por baixo. A etiqueta cai justamente em cima da
+            # única parte da imagem que ficou em brilho cheio — a máscara —, e
+            # verde sobre amarelo saturado é ilegível.
+            cv2.putText(vis, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale,
+                        (0, 0, 0), 4, cv2.LINE_AA)
+            cv2.putText(vis, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale,
+                        color, 2, cv2.LINE_AA)
+
+        for b in acc[:6]:
+            label(f'{b.area}', (int(b.cx) + 14, int(b.cy) - 14), (0, 255, 0), 0.7)
+        # Só os rejeitados grandes ganham etiqueta: o ruído de 1–2 px é
+        # esperado e escrever nele tampa a imagem inteira.
+        for b in rej[:8]:
+            if b.area < max(8, spec.min_area * 0.15):
+                continue
+            label(f'{b.area}', (int(b.cx) + 10, int(b.cy) - 10), (0, 140, 255), 0.6)
+
+        cv2.putText(vis, f'mascara: {name}   H {spec.h_lo}-{spec.h_hi}  '
+                         f'S>={spec.s_min}  V>={spec.v_min}  '
+                         f'area {spec.min_area}-{spec.max_area}',
+                    (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+        cv2.putText(vis, f'verde: aceito ({len(acc)})   '
+                         f'laranja: fora da faixa de area ({len(rej)})',
+                    (20, 74), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2)
+        return vis
+
+    def _draw_overlay(self, frame, det, mask_name=None):
+        if mask_name and mask_name in self.detector.colors:
+            return self._draw_mask(frame, mask_name)
+
         vis = frame.copy()
 
         # As marcações do campo projetadas pela homografia. Se a calibração
@@ -596,7 +678,14 @@ class VisionNode(Node):
                              'Cache-Control': 'public, max-age=86400'})
 
     async def _serve_stream(self, request):
-        """MJPEG multipart — funciona em <img src> sem uma linha de JS."""
+        """MJPEG multipart — funciona em <img src> sem uma linha de JS.
+
+        `?mask=team_a` troca a imagem pela máscara daquela cor. Vai na URL, e
+        não num estado do nó, porque assim o modo pertence à aba que está
+        olhando: dá para abrir duas e comparar duas cores lado a lado, e
+        recarregar não deixa o nó preso num modo que ninguém pediu.
+        """
+        mask_name = request.query.get('mask') or None
         resp = web.StreamResponse(headers={
             'Content-Type': 'multipart/x-mixed-replace; boundary=frame'})
         await resp.prepare(request)
@@ -607,7 +696,7 @@ class VisionNode(Node):
                 if frame is None:
                     await asyncio.sleep(0.05)
                     continue
-                vis = self._draw_overlay(frame, det)
+                vis = self._draw_overlay(frame, det, mask_name)
                 # A GUI é para calibrar, não para o público: metade da largura
                 # é nítida o bastante e cabe folgado na rede.
                 vis = cv2.resize(vis, (vis.shape[1] // 2, vis.shape[0] // 2))
@@ -667,7 +756,97 @@ class VisionNode(Node):
                     await ws.send_json({'type': 'error', 'msg': str(exc)})
             elif kind == 'stats':
                 await ws.send_json({'type': 'stats', 'stats': self._stats})
+            elif kind == 'report':
+                await self._do_report(ws, data)
+            elif kind == 'probe':
+                await self._do_probe(ws, data)
         return ws
+
+    # ── medidas de qualidade da cor ─────────────────────────────────────
+
+    def _snapshot(self):
+        with self._lock:
+            return None if self._frame is None else self._frame.copy()
+
+    def _seen_fracs(self):
+        """Por cor: em que fração dos últimos frames ela apareceu.
+
+        Dois números, e a diferença entre eles é informação: `seen` é "achou
+        pelo menos um blob", `full` é "achou quantos deveria". Com um robô só
+        em campo o `front` fica em 50% de `full` sem que nada esteja errado —
+        por isso os dois aparecem, em vez de um só que precisaria de ressalva.
+        """
+        out = {}
+        for name, hist in self._seen.items():
+            n = len(hist)
+            if not n:
+                out[name] = {'seen': None, 'full': None, 'n': 0}
+                continue
+            exp = EXPECTED_BLOBS.get(name, 1)
+            out[name] = {
+                'seen': round(sum(1 for c in hist if c >= 1) / n, 3),
+                'full': round(sum(1 for c in hist if c >= exp) / n, 3),
+                'n': n,
+            }
+        return out
+
+    async def _do_report(self, ws, data):
+        frame = self._snapshot()
+        if frame is None:
+            return
+        focus = data.get('focus')
+        try:
+            rep = self.detector.quality(frame, focus=focus)
+        except Exception as exc:
+            await ws.send_json({'type': 'error', 'msg': f'relatório: {exc}'})
+            return
+        rep['seen'] = self._seen_fracs()
+        rep['focus'] = focus
+        await ws.send_json({'type': 'report', 'report': rep})
+
+    async def _do_probe(self, ws, data):
+        """HSV sob o cursor, e por qual eixo cada cor rejeitaria aquele pixel.
+
+        Isto responde a pergunta que nenhum slider responde: *por que* o
+        feltro está entrando no azul-bebê, ou por que a etiqueta não entra.
+        Saber que o pixel está a S=104 com `s_min=112` é o conserto pronto;
+        sem isso, o caminho é arrastar sliders até parecer melhor, que é como
+        se estraga uma calibração que estava boa.
+        """
+        # Recorta DENTRO do lock em vez de copiar o frame inteiro: a sonda
+        # dispara a ~12 Hz enquanto o mouse anda, e copiar 6 MB para ler 25
+        # pixels tirava banda de memória da captura, que é quem não pode
+        # perder o passo.
+        with self._lock:
+            if self._frame is None:
+                return
+            h, w = self._frame.shape[:2]
+            x = int(np.clip(int(data.get('x', 0)), 2, w - 3))
+            y = int(np.clip(int(data.get('y', 0)), 2, h - 3))
+            crop = self._frame[y - 2:y + 3, x - 2:x + 3].copy()
+
+        patch = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).reshape(-1, 3)
+        # Mediana, não média: o quadradinho de 5×5 pode cair na borda da
+        # etiqueta, e aí a média inventa uma cor que não existe em pixel
+        # nenhum — exatamente o erro que a média circular de matiz evita no
+        # `pick_color`.
+        hh, ss, vv = (int(np.median(patch[:, i])) for i in range(3))
+
+        out = []
+        for name, spec in self.detector.colors.items():
+            span = (spec.h_hi - spec.h_lo) % 180
+            pos = (hh - spec.h_lo) % 180
+            out.append({
+                'name': name,
+                'h': bool(span and pos <= span),
+                's': bool(spec.s_min <= ss <= spec.s_max),
+                'v': bool(spec.v_min <= vv <= spec.v_max),
+            })
+
+        await ws.send_json({'type': 'probe', 'x': x, 'y': y,
+                            'hsv': [hh, ss, vv],
+                            'rgb': hsv_to_rgb(hh, ss, vv),
+                            'colors': out})
 
     async def _do_pick(self, ws, data):
         """Clique numa cor no vídeo → faixa HSV derivada da amostra."""
@@ -678,11 +857,12 @@ class VisionNode(Node):
             return
 
         name = data['name']
+        x, y = int(data['x']), int(data['y'])
+        radius = int(data.get('radius', 6))
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         try:
             prev = self.detector.colors.get(name)
-            spec = pick_color(hsv, int(data['x']), int(data['y']), name,
-                              radius=int(data.get('radius', 6)), prev=prev)
+            spec = pick_color(hsv, x, y, name, radius=radius, prev=prev)
         except Exception as exc:
             await ws.send_json({'type': 'error', 'msg': str(exc)})
             return
@@ -690,6 +870,19 @@ class VisionNode(Node):
         self.cfg['colors'][name] = cfgmod._spec_to_dict(spec)
         self._rebuild()
         await ws.send_json({'type': 'config', 'config': self.cfg})
+
+        # O retrato da amostra vai junto, medido contra a faixa que ela mesma
+        # gerou. Sem isto o clique é cego nos dois sentidos: não dá para saber
+        # se pegou a etiqueta ou a borda dela, e o erro só aparece depois, como
+        # detecção que pisca.
+        try:
+            await ws.send_json({
+                'type': 'sample',
+                'sample': sample_report(hsv, x, y, spec, radius=radius,
+                                        others=self.detector.colors)})
+        except Exception as exc:
+            self.get_logger().warn(f'retrato da amostra falhou: {exc}')
+
         self.get_logger().info(
             f'{name}: H {spec.h_lo}–{spec.h_hi}, S≥{spec.s_min}, V≥{spec.v_min}')
 

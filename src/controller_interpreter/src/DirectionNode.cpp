@@ -11,15 +11,27 @@ DirectionNode::DirectionNode() : Node("direction") {
     this->declare_parameter("max_angular_velocity", 5.0);
     this->declare_parameter("invert_direction", false);
 
-    // Como o driver reporta os gatilhos analógicos (L2/R2):
-    //   "signed" -> solto = +1.0, apertado = -1.0  (joy_node clássico, e o que
-    //               o nosso keyboard_input emula)
-    //   "unit"   -> solto =  0.0, apertado =  1.0  (alguns backends SDL)
+    // Como o produtor do Joy reporta os gatilhos analógicos (L2/R2):
+    //   "sdl"    -> solto = 0.0, fundo = -1.0   (o game_controller_node)
+    //   "unit"   -> solto = 0.0, fundo = +1.0
+    //   "signed" -> solto = +1.0, fundo = -1.0  (joy_node clássico)
     //
-    // Errar isto não é sutil: no modo trocado o robô anda para trás quando o
-    // jogador acelera. Para conferir, rode `ros2 topic echo /joy_0` e olhe os
-    // eixos 4 e 5 com os gatilhos soltos.
-    this->declare_parameter("trigger_mode", "signed");
+    // "sdl" é a convenção do repo inteiro, porque é a que o hardware fala.
+    // Medido em 13/08/2026 com um DualShock 4, gatilho apertado até o fim:
+    //
+    //     repouso  L2  0.00   R2  0.00
+    //     fundo    L2 -1.00   R2 -1.00
+    //
+    // O sinal negativo vem do próprio `game_controller_node`, que nega os
+    // eixos do SDL. A IA, o simulador e o keyboard_input foram alinhados a
+    // isso; o neutro continua sendo o zero do array, que ninguém esquece de
+    // preencher.
+    //
+    // Errar isto não é sutil, e o sintoma não aponta para a causa: em "unit"
+    // o clamp joga o -1.0 do fundo para 0.0, os dois gatilhos lêem 0 e o robô
+    // fica IMÓVEL enquanto o volante continua funcionando. Para conferir, rode
+    // `ros2 topic echo /joy_1` e aperte R2: axes[5] tem de ir a -1.0.
+    this->declare_parameter("trigger_mode", "sdl");
 
     this->declare_parameter("verbose", false);
 
@@ -29,11 +41,17 @@ DirectionNode::DirectionNode() : Node("direction") {
     _verbose = this->get_parameter("verbose").as_bool();
 
     const std::string mode = this->get_parameter("trigger_mode").as_string();
-    _triggersAreSigned = (mode != "unit");
 
-    if (mode != "signed" && mode != "unit") {
+    if (mode == "sdl") {
+        _triggerMode = TriggerMode::SDL;
+    } else if (mode == "unit") {
+        _triggerMode = TriggerMode::UNIT;
+    } else if (mode == "signed") {
+        _triggerMode = TriggerMode::SIGNED;
+    } else {
+        _triggerMode = TriggerMode::SDL;
         RCLCPP_WARN(this->get_logger(),
-            "trigger_mode '%s' desconhecido. Usando 'signed'.", mode.c_str());
+            "trigger_mode '%s' desconhecido. Usando 'sdl'.", mode.c_str());
     }
 
     _joyListSubscriber =
@@ -50,12 +68,17 @@ DirectionNode::DirectionNode() : Node("direction") {
             "invertido: %s | gatilhos: %s",
             _maxLinearVelocity, _maxAngularVelocity,
             _invertDirection ? "sim" : "não",
-            _triggersAreSigned ? "signed" : "unit");
+            mode.c_str());
 }
 
 double DirectionNode::_normalizeTrigger(double raw) const {
     // Sai sempre em [0.0, 1.0], com 0 = solto.
-    const double value = _triggersAreSigned ? (1.0 - raw) / 2.0 : raw;
+    double value = 0.0;
+    switch (_triggerMode) {
+        case TriggerMode::SDL:    value = -raw;             break;
+        case TriggerMode::UNIT:   value = raw;              break;
+        case TriggerMode::SIGNED: value = (1.0 - raw) / 2.0; break;
+    }
     return std::clamp(value, 0.0, 1.0);
 }
 

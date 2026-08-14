@@ -294,6 +294,7 @@ PAGE = r"""<!doctype html>
 <div class="ctrl">
   <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> anda ·
         <kbd>Q</kbd><kbd>E</kbd> gira no lugar · <kbd>espaço</kbd> para</span>
+  <span id="pad">sem controle</span>
   <span>robô <select id="rid"><option>0</option><option selected>1</option></select></span>
   <span>força <input type="range" id="sp" min="0" max="100" value="60">
         <output id="spv">0.60</output></span>
@@ -310,13 +311,63 @@ const CID = 'painel-' + Math.random().toString(36).slice(2, 8);
 const KEYS = { w:[1,1], arrowup:[1,1], s:[-1,-1], arrowdown:[-1,-1],
   a:[-0.6,0.6], arrowleft:[-0.6,0.6], d:[0.6,-0.6], arrowright:[0.6,-0.6],
   q:[-1,1], e:[1,-1] };
-let speed = 0.6, held = new Set();
+let speed = 0.6, held = new Set(), travado = false;
 
-function wheels() {
+// --- gamepad (DualShock 4) -------------------------------------------------
+// A Gamepad API não tem evento de eixo: é polling, e o navegador só entrega o
+// controle depois de UM botão apertado com a página em foco. Antes disso
+// getGamepads() devolve nulls mesmo com o controle ligado — daí o rótulo.
+const DZ_EIXO = 0.12, DZ_GATILHO = 0.05;
+
+function pad_ativo() {
+  for (const g of (navigator.getGamepads ? navigator.getGamepads() : []))
+    if (g && g.connected) return g;
+  return null;
+}
+
+// Mesma convenção do resto do projeto: volante no eixo 0, R2 anda, L2 dá ré.
+// No "standard mapping" os gatilhos são buttons[6]/[7] com valor 0..1. Fora
+// dele (o mesmo DS4 já apareceu assim, depende de navegador e de com/sem fio)
+// eles vêm como eixos 3/4, soltos em -1. Aceitar os dois evita o clássico
+// "gira mas não anda". Aqui NÃO vale a inversão do SDL do game_controller_node:
+// o navegador entrega o gatilho positivo crescendo com a pressão.
+function gatilhos(g) {
+  const b = g.buttons || [];
+  if (b.length > 7) return [b[6].value, b[7].value];
+  const ax = i => (g.axes.length > i ? (g.axes[i] + 1) / 2 : 0);
+  return [ax(3), ax(4)];
+}
+
+function morto(v, dz) { return Math.abs(v) < dz ? 0 : v; }
+
+// null = controle presente mas parado; aí o teclado continua valendo.
+function rodas_pad(g) {
+  const [l2, r2] = gatilhos(g);
+  const frente = morto(r2, DZ_GATILHO) - morto(l2, DZ_GATILHO);
+  const volante = morto(g.axes[0] || 0, DZ_EIXO);
+  if (!frente && !volante) return null;
+  const l = frente + volante, r = frente - volante;
+  const m = Math.max(1, Math.abs(l), Math.abs(r));
+  return [l/m*speed, r/m*speed];
+}
+
+function rodas_teclado() {
   let l = 0, r = 0;
   for (const k of held) { const v = KEYS[k]; if (v) { l += v[0]; r += v[1]; } }
   const m = Math.max(1, Math.abs(l), Math.abs(r));
   return [l/m*speed, r/m*speed];
+}
+
+function wheels() {
+  const g = pad_ativo();
+  const saida = (g && rodas_pad(g)) || rodas_teclado();
+  // PARAR com o gatilho apertado: o keyup nunca chega e o teclado não zera o
+  // gamepad. Só destrava quando as duas fontes voltam ao neutro.
+  if (travado) {
+    if (saida[0] === 0 && saida[1] === 0) travado = false;
+    return [0, 0];
+  }
+  return saida;
 }
 
 function elos(alvo, lista) {
@@ -369,6 +420,10 @@ function render(s) {
 
 async function tick() {
   const [l, r] = wheels();
+  const g = pad_ativo();
+  document.getElementById('pad').textContent = g
+    ? '🎮 ' + (g.id || 'controle').slice(0, 28) + (travado ? ' (parado)' : '')
+    : 'sem controle — aperte um botão nele com esta aba em foco';
   try {
     const resp = await fetch('/estado', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -383,7 +438,7 @@ tick();
 
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (k === ' ') { held.clear(); e.preventDefault(); return; }
+  if (k === ' ') { held.clear(); travado = true; e.preventDefault(); return; }
   if (KEYS[k]) { held.add(k); e.preventDefault(); }
 });
 addEventListener('keyup', e => held.delete(e.key.toLowerCase()));
@@ -393,7 +448,9 @@ addEventListener('blur', () => held.clear());
 const sp = document.getElementById('sp');
 sp.oninput = () => { speed = sp.value/100;
   document.getElementById('spv').textContent = speed.toFixed(2); };
-document.getElementById('estop').onclick = () => held.clear();
+document.getElementById('estop').onclick = () => { held.clear(); travado = true; };
+addEventListener('gamepadconnected', tick);
+addEventListener('gamepaddisconnected', tick);
 document.getElementById('boost').onclick = () => fetch('/boost', {method:'POST'});
 </script></body></html>
 """
@@ -472,7 +529,12 @@ def _porta_de(url: str, padrao: int) -> int:
 
 
 def quem_segura_seriais():
-    """[(pid, comando, porta)] de quem está com um /dev/ttyUSB* aberto.
+    """[(pid, comando, porta)] de quem está com uma serial de placa aberta.
+
+    ttyUSB cobre o CH340 (Nano, Uno clone) e ttyACM o ATmega16U2 do Uno oficial,
+    que também serve de ponte. Olhar só ttyUSB devolvia lista vazia justamente
+    quando o culpado era uma ponte em Uno — e lista vazia aqui lê como "ninguém
+    está segurando", que manda procurar no lugar errado.
 
     O `debug_panel` precisa das duas seriais em exclusivo. O erro clássico é
     subir com o `radio_console` ainda de pé: a porta não abre, o painel fica
@@ -486,7 +548,7 @@ def quem_segura_seriais():
         try:
             for fd in os.listdir(f'/proc/{pid}/fd'):
                 alvo = os.readlink(f'/proc/{pid}/fd/{fd}')
-                if alvo.startswith('/dev/ttyUSB'):
+                if alvo.startswith(('/dev/ttyUSB', '/dev/ttyACM')):
                     with open(f'/proc/{pid}/cmdline', 'rb') as f:
                         cmd = f.read().replace(b'\0', b' ').decode().strip()
                     presos.append((int(pid), cmd or '?', alvo))

@@ -102,7 +102,7 @@ def generate_launch_description():
             parameters=[{
                 'max_linear_velocity': LaunchConfiguration('max_linear_velocity'),
                 'max_angular_velocity': LaunchConfiguration('max_angular_velocity'),
-                'trigger_mode': 'signed',
+                'trigger_mode': 'sdl',
                 'verbose': verbose,
             }],
         ),

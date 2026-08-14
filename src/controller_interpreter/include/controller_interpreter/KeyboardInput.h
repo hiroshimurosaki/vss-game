@@ -4,6 +4,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 
+#include <string>
 #include <unordered_map>
 #include <SDL2/SDL.h>
 
@@ -16,6 +17,8 @@ public:
     ~KeyboardInput();
 
 private:
+
+    int32_t _robotId = 0;
 
     SDL_Window* _window = nullptr;
     bool _capturing = false;

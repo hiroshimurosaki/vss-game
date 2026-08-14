@@ -112,6 +112,20 @@ def _hue_stats(hues: np.ndarray):
     return mean, d
 
 
+def _hue_span(spec: ColorSpec) -> float:
+    """Largura da faixa de matiz, já contando a volta no zero."""
+    return float((spec.h_hi - spec.h_lo) % 180)
+
+
+def hsv_to_rgb(h, s, v):
+    """Uma cor HSV do OpenCV → (r, g, b), para desenhar amostra na tela."""
+    px = np.uint8([[[int(h) % 180,
+                     int(np.clip(s, 0, 255)),
+                     int(np.clip(v, 0, 255))]]])
+    r, g, b = cv2.cvtColor(px, cv2.COLOR_HSV2RGB)[0, 0]
+    return int(r), int(g), int(b)
+
+
 def pick_color(hsv: np.ndarray, x: int, y: int, name: str,
                radius: int = 6, prev: ColorSpec = None) -> ColorSpec:
     """Deriva uma faixa HSV a partir de um clique na imagem.
@@ -153,6 +167,314 @@ def pick_color(hsv: np.ndarray, x: int, y: int, name: str,
                      s_max=255, v_max=255,
                      min_area=base.min_area if base else 80,
                      max_area=base.max_area if base else 20000)
+
+
+def sample_report(hsv: np.ndarray, x: int, y: int, spec: ColorSpec,
+                  radius: int = 6, others: dict = None) -> dict:
+    """Retrato do PONTO amostrado: o clique foi bom ou foi na borda?
+
+    A faixa que sai do `pick_color` é boa exatamente na medida em que a
+    amostra é boa, e a amostra ruim tem uma assinatura clara: o quadradinho
+    pegou parte da etiqueta e parte do feltro, então ele é **heterogêneo** e a
+    faixa derivada abre para caber os dois. Isso não aparece em lugar nenhum
+    hoje — a pessoa clica, a faixa muda, e ela só descobre que foi ruim quando
+    o robô some no meio da partida.
+
+    Três números respondem a pergunta:
+
+    - `cobertura`: fração dos pixels do quadradinho que a faixa gerada pega.
+      Amostra de dentro da etiqueta dá ~1,00. Clique na borda derruba isto,
+      porque metade dos pixels é fundo e o percentil que define a faixa os
+      exclui.
+    - `espalhamento`: quantos graus de matiz a amostra ocupa (p90). Etiqueta
+      lisa fica em 2–5°; acima de ~12° o quadradinho tem duas cores dentro.
+    - `vizinha`: a cor já calibrada mais próxima em matiz. É o aviso de
+      colisão — foi assim que o azul-escuro morreu como cor de time, a 3° do
+      azul-bebê.
+    """
+    h, w = hsv.shape[:2]
+    x0, x1 = max(0, x - radius), min(w, x + radius + 1)
+    y0, y1 = max(0, y - radius), min(h, y + radius + 1)
+    patch = hsv[y0:y1, x0:x1].reshape(-1, 3)
+    if len(patch) < 9:
+        raise ValueError('clique fora da imagem')
+
+    H, S, V = patch[:, 0], patch[:, 1], patch[:, 2]
+    mean_h, dev = _hue_stats(H)
+    spread = float(np.percentile(dev, 90))
+
+    inside = spec.mask(patch.reshape(1, -1, 3))
+    coverage = float(np.count_nonzero(inside) / len(patch))
+
+    near_name, near_d = None, None
+    for other, ospec in (others or {}).items():
+        if other == spec.name:
+            continue
+        # Distância entre os CENTROS das duas faixas, pelo lado curto.
+        c = ((ospec.h_lo + _hue_span(ospec) / 2.0) % 180)
+        d = abs(mean_h - c)
+        d = min(d, 180.0 - d)
+        if near_d is None or d < near_d:
+            near_name, near_d = other, d
+
+    issues = []
+    if coverage < 0.80:
+        issues.append(f'a faixa só pega {coverage*100:.0f}% do que você '
+                      f'clicou — clique mais para o centro da etiqueta')
+    if spread > 12.0:
+        issues.append(f'a amostra tem {spread:.0f}° de matiz dentro dela: '
+                      f'pegou duas cores no mesmo quadradinho')
+    if np.percentile(S, 50) < 60:
+        issues.append('amostra pouco saturada — é fácil confundir com o feltro')
+    if near_d is not None and near_d < 10.0:
+        issues.append(f'fica a {near_d:.0f}° de `{near_name}`; abaixo de ~10° '
+                      f'as duas se misturam quando a luz muda')
+
+    return {
+        'name': spec.name,
+        'x': int(x), 'y': int(y), 'radius': int(radius),
+        'pixels': int(len(patch)),
+        'mean': [round(float(mean_h), 1),
+                 round(float(S.mean()), 1), round(float(V.mean()), 1)],
+        'rgb': hsv_to_rgb(mean_h, S.mean(), V.mean()),
+        'p10': [int(np.percentile(S, 10)), int(np.percentile(V, 10))],
+        'p90': [int(np.percentile(S, 90)), int(np.percentile(V, 90))],
+        'coverage': round(coverage, 3),
+        'spread': round(spread, 1),
+        'near': near_name,
+        'near_deg': None if near_d is None else round(float(near_d), 1),
+        'issues': issues,
+    }
+
+
+# ── Qualidade da segmentação ─────────────────────────────────────────────
+#
+# Tudo aqui é medição sobre a máscara de UMA cor, e existe para responder a
+# única pergunta que a tela de calibração não respondia: "o limiar que eu
+# acabei de pôr está confortável ou está roçando?".
+#
+# A diferença importa porque as duas situações são idênticas na tela — nos
+# dois casos o robô aparece detectado. Só que a que está roçando desaparece
+# quando alguém passa perto da luminária no meio da partida.
+
+#: Quantos blobs cada cor deve produzir com os dois robôs e a bola em campo.
+#: `front` são dois: o quadrado de orientação existe nos dois robôs.
+EXPECTED_BLOBS = {'ball': 1, 'team_a': 1, 'team_b': 1, 'front': 2}
+
+#: Folga confortável em cada eixo, nas unidades do próprio eixo (H em graus de
+#: 0–179, S e V em 0–255). Não é limite físico, é onde eu parei de ver a
+#: detecção piscar nas medições deste campo: abaixo disto, variação normal de
+#: iluminação já tira pixel da faixa.
+COMFORT = {'h': 8.0, 's': 30.0, 'v': 30.0}
+
+
+def color_report(hsv: np.ndarray, spec: ColorSpec, mask: np.ndarray,
+                 scatter: int = 0) -> dict:
+    """Mede quão bem a faixa de `spec` isola o objeto no quadro atual.
+
+    `mask` vem pronta (já com a abertura morfológica) porque quem chama
+    normalmente já precisou dela — ver `Detector.quality`.
+
+    As medidas, e por que cada uma:
+
+    - **folga** (`margin_h/s/v`): a que distância da borda da faixa estão os
+      pixels do MIOLO do objeto, no percentil 5. É a medida central. Folga 2
+      em S quer dizer que uma sombra de nada apaga a etiqueta; folga 40 quer
+      dizer que dá para a luz cair pela metade sem perder nada. Percentil 5, e
+      não média, porque quem some primeiro é o pixel mais fraco; miolo, e não
+      blob inteiro, porque a franja da etiqueta encosta em qualquer limiar —
+      ver o comentário longo na erosão, abaixo.
+    - **solidez**: área do blob dividida pela área do seu fecho convexo. Faixa
+      apertada não some de uma vez — ela primeiro esburaca a etiqueta, e o
+      centróide começa a pular. Cai antes de a detecção falhar, então é o
+      aviso mais adiantado que existe aqui.
+    - **vazamento**: pixels acesos que não estão no blob principal. É o outro
+      erro, o oposto: faixa larga demais acende feltro, entulho e o outro
+      robô. Aparecia só como "o robô foi parar fora do campo".
+    """
+    lit = int(cv2.countNonZero(mask))
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+
+    accepted, rejected = [], []
+    for i in range(1, n):
+        a = int(stats[i, cv2.CC_STAT_AREA])
+        (accepted if spec.min_area <= a <= spec.max_area
+         else rejected).append((a, i))
+    accepted.sort(reverse=True)
+    rejected.sort(reverse=True)
+
+    rep = {
+        'lit': lit,
+        'blobs': [a for a, _ in accepted[:6]],
+        'n_blobs': len(accepted),
+        'expected': EXPECTED_BLOBS.get(spec.name, 1),
+        'rejected': len(rejected),
+        'rejected_area': int(sum(a for a, _ in rejected)),
+        'main_area': accepted[0][0] if accepted else 0,
+        'min_area': spec.min_area,
+        'max_area': spec.max_area,
+        'margin_h': None, 'margin_s': None, 'margin_v': None,
+        'solidity': None, 'mean': None, 'rgb': None,
+        'stray': lit,
+        'score': 0, 'issues': [], 'scatter': [],
+    }
+
+    if not accepted:
+        rep['issues'].append('nenhum blob dentro da faixa de área — '
+                             'nada detectado com esta cor')
+        return rep
+
+    area, idx = accepted[0]
+    sel = lab == idx
+
+    # A folga é medida no MIOLO do blob, não no blob inteiro.
+    #
+    # Medindo no blob inteiro, a folga de qualquer limiar que esteja ativo na
+    # borda dá zero, sempre, e por um motivo que não tem nada a ver com
+    # calibração: a borda da etiqueta é uma rampa de dois ou três pixels entre
+    # a cor e o feltro, com anti-serrilhado e ringing do MJPG por cima. Essa
+    # rampa passa por todos os valores, então onde quer que o limiar esteja há
+    # pixel encostado nele. Medido aqui: o amarelo com `v_min=90` dava folga 0,
+    # baixar para 70 dava folga 0 de novo — o número não respondia ao que
+    # estava sendo ajustado, que é o pior defeito que uma medida pode ter.
+    #
+    # O miolo é o que responde à pergunta de verdade: se a luz cair, a etiqueta
+    # inteira sai da faixa ou só a franja dela?
+    core = cv2.erode(sel.astype(np.uint8), np.ones((5, 5), np.uint8))
+    if cv2.countNonZero(core) < 25:
+        core = cv2.erode(sel.astype(np.uint8), np.ones((3, 3), np.uint8))
+    px = hsv[core > 0] if cv2.countNonZero(core) >= 25 else hsv[sel]
+
+    H = px[:, 0].astype(np.float32)
+    S = px[:, 1].astype(np.float32)
+    V = px[:, 2].astype(np.float32)
+
+    # Folga em matiz: posição do pixel DENTRO da faixa, distância à borda mais
+    # próxima. Feito em coordenada relativa a h_lo para a faixa que dá a volta
+    # no zero sair certa sem caso especial.
+    span = _hue_span(spec)
+    pos = (H - spec.h_lo) % 180.0
+    m_h = float(np.percentile(np.minimum(pos, span - pos), 5)) if span else 0.0
+    m_s = float(min(np.percentile(S, 5) - spec.s_min,
+                    spec.s_max - np.percentile(S, 95)))
+    m_v = float(min(np.percentile(V, 5) - spec.v_min,
+                    spec.v_max - np.percentile(V, 95)))
+
+    # Solidez: área do blob sobre a área do seu fecho convexo, as duas
+    # contadas em PIXEL. Usar `cv2.contourArea` no fecho parece equivalente e
+    # não é: ela mede o polígono pela linha de centro do contorno e devolve
+    # (w-1)(h-1) para um retângulo de w×h pixels. Num blob grande isso é 2% de
+    # viés e passa despercebido; num blob de 600 px, como a bola e o quadrado
+    # da frente, dá 1,08 — solidez maior que 1, e o esburacado que a medida
+    # existe para pegar fica escondido dentro do erro.
+    bx = int(stats[idx, cv2.CC_STAT_LEFT])
+    by = int(stats[idx, cv2.CC_STAT_TOP])
+    bw = int(stats[idx, cv2.CC_STAT_WIDTH])
+    bh = int(stats[idx, cv2.CC_STAT_HEIGHT])
+    comp = (lab[by:by + bh, bx:bx + bw] == idx).astype(np.uint8)
+    cnts, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    solidity = 1.0
+    if cnts:
+        filled = np.zeros_like(comp)
+        cv2.fillConvexPoly(filled, cv2.convexHull(np.vstack(cnts)), 1)
+        hull_px = int(cv2.countNonZero(filled))
+        if hull_px:
+            solidity = float(min(1.0, area / hull_px))
+
+    mean_h, _ = _hue_stats(px[:, 0])
+
+    # Vazamento é o que sobra depois de descontar os blobs que a cor DEVERIA
+    # produzir, não só o maior. Descontando só o maior, o `front` — que são
+    # dois quadrados, um por robô — aparecia com 100% de vazamento sempre,
+    # exatamente na cor mais apertada do conjunto, que é a que mais precisa
+    # que a medida seja confiável.
+    exp = rep['expected']
+    stray = lit - sum(a for a, _ in accepted[:exp])
+
+    def _clip(v):
+        return float(np.clip(v, 0.0, 1.0))
+
+    # Nota heurística, calibrada para bater com o que eu já via a olho: 45 para
+    # a folga (a que manda), 30 para limpeza, 25 para forma. Serve para
+    # comparar as quatro cores entre si e para ver a barra reagir enquanto se
+    # arrasta o slider — não é probabilidade de nada.
+    folga = min(m_h / COMFORT['h'], m_s / COMFORT['s'], m_v / COMFORT['v'])
+    limpeza = 1.0 - min(1.0, stray / max(area, 1))
+    forma = (solidity - 0.70) / 0.25
+    score = int(round(45 * _clip(folga) + 30 * _clip(limpeza)
+                      + 25 * _clip(forma)))
+
+    issues = []
+    if m_h < 3.0:
+        issues.append(f'matiz roçando a borda ({m_h:.1f}° de folga) — '
+                      f'alargue h_lo/h_hi ou clique de novo na cor')
+    if m_s < 10.0:
+        issues.append(f's_min={spec.s_min} está encostado nos pixels '
+                      f'({m_s:.0f} de folga): sombra apaga a etiqueta')
+    if m_v < 10.0:
+        issues.append(f'v_min={spec.v_min} está encostado nos pixels '
+                      f'({m_v:.0f} de folga)')
+    if solidity < 0.85:
+        issues.append(f'máscara esburacada (solidez {solidity:.2f}) — '
+                      f'a faixa está apertada e o centróide vai pular')
+    if stray > area:
+        issues.append(f'{stray} px acesos fora do que a cor deveria acender, '
+                      f'contra {area} dentro: a faixa está pegando cenário')
+    if len(accepted) > exp:
+        issues.append(f'{len(accepted)} blobs válidos, esperava {exp} — '
+                      f'tem outra coisa desta cor em campo')
+    if area <= spec.min_area * 1.4:
+        issues.append(f'área {area} px quase no piso min_area={spec.min_area}: '
+                      f'um frame pior derruba abaixo e some')
+
+    if scatter and len(px):
+        step = max(1, len(px) // scatter)
+        rep['scatter'] = [[int(a), int(b), int(c)]
+                          for a, b, c in px[::step][:scatter]]
+
+    rep.update({
+        'margin_h': round(m_h, 1),
+        'margin_s': round(m_s, 1),
+        'margin_v': round(m_v, 1),
+        'solidity': round(solidity, 3),
+        'mean': [round(float(mean_h), 1),
+                 round(float(S.mean()), 1), round(float(V.mean()), 1)],
+        'rgb': hsv_to_rgb(mean_h, S.mean(), V.mean()),
+        'stray': int(stray),
+        'score': score,
+        'issues': issues,
+    })
+    return rep
+
+
+def mask_overlaps(masks: dict, min_frac: float = 0.02) -> list:
+    """Quanto da máscara de cada cor cai dentro da máscara de outra.
+
+    Este é o modo de falha que mais custou tempo neste projeto e o que menos
+    se enxerga olhando uma cor por vez: cada faixa parece ótima sozinha, e as
+    duas juntas brigam pelos mesmos pixels. O azul-escuro contra o azul-bebê
+    chegou a 86% de pixels em comum — o robô andava de ré e nada na tela
+    apontava para a cor.
+
+    A razão é assimétrica de propósito (`|A∩B| / |A|`): a cor pequena invadida
+    pela grande é um problema muito pior que o contrário, e uma média
+    esconderia isso.
+    """
+    names = list(masks)
+    out = []
+    for a in names:
+        na = cv2.countNonZero(masks[a])
+        if na == 0:
+            continue
+        for b in names:
+            if a == b:
+                continue
+            inter = cv2.countNonZero(cv2.bitwise_and(masks[a], masks[b]))
+            frac = inter / na
+            if frac >= min_frac:
+                out.append({'a': a, 'b': b, 'frac': round(float(frac), 3)})
+    out.sort(key=lambda d: -d['frac'])
+    return out
 
 
 # ── Calibração geométrica ────────────────────────────────────────────────
@@ -410,6 +732,12 @@ class Detection:
     ball_m: tuple = None      # (x, y) em metros, ou None se não achou
     ball_px: tuple = None
     robots: list = dc_field(default_factory=list)
+    #: Quantos blobs dentro da faixa de área cada cor produziu neste frame.
+    #: Não é o resultado da detecção (o filtro geométrico ainda vem depois) —
+    #: é o resultado da COR sozinha, que é o que a calibração ajusta. Serve
+    #: para a GUI dizer "esta cor apareceu em 87% dos frames", número que
+    #: nenhum retrato instantâneo dá.
+    counts: dict = dc_field(default_factory=dict)
 
     @property
     def ball_detected(self) -> bool:
@@ -490,7 +818,7 @@ class Detector:
 
     # -- alvos -----------------------------------------------------------
 
-    def _find_ball(self, hsv, robot_pts, offset=(0, 0)):
+    def _find_ball(self, hsv, robot_pts, offset=(0, 0), counts=None):
         """A bola é o maior blob laranja que **não** está colado num robô.
 
         Esse filtro existe por um motivo medido, não teórico: um quadrado de ID
@@ -500,6 +828,8 @@ class Detector:
         caem em cima de um robô resolve pela geometria, que é confiável.
         """
         cands = self._blobs(hsv, self.colors['ball'], limit=6, offset=offset)
+        if counts is not None:
+            counts['ball'] = len(cands)
         if not cands:
             return None
 
@@ -526,8 +856,14 @@ class Detector:
             return b
         return None
 
-    def _find_robot(self, hsv, team_key, robot_id, front_blobs, offset=(0, 0)):
-        body = self._blobs(hsv, self.colors[team_key], limit=1, offset=offset)
+    def _find_robot(self, hsv, team_key, robot_id, front_blobs, offset=(0, 0),
+                    counts=None):
+        # limit=4 e não 1: o corpo é sempre o maior, mas saber que existem
+        # OUTROS blobs desta cor em campo é justamente o sintoma de faixa
+        # larga demais, e com limit=1 essa informação era descartada aqui.
+        body = self._blobs(hsv, self.colors[team_key], limit=4, offset=offset)
+        if counts is not None:
+            counts[team_key] = len(body)
         if not body:
             return None
         b = body[0]
@@ -578,31 +914,109 @@ class Detector:
     #: objeto vermelho do cenário, que está muito mais longe que isto.
     out_of_field_margin = 0.12
 
-    def detect(self, frame: np.ndarray) -> Detection:
+    def current_roi(self, shape):
         # Cache simples: o nó reconstrói o Detector inteiro quando a calibração
         # muda, então não existe caso em que este valor fique velho.
-        if self.roi is None and self._auto_roi is None:
-            self._auto_roi = self.auto_roi(frame.shape)
-        roi = self.roi if self.roi is not None else self._auto_roi
-        x0, y0, x1, y1 = roi
+        if self.roi is not None:
+            return self.roi
+        if self._auto_roi is None:
+            self._auto_roi = self.auto_roi(shape)
+        return self._auto_roi
+
+    def detect(self, frame: np.ndarray) -> Detection:
+        x0, y0, x1, y1 = self.current_roi(frame.shape)
         frame = frame[y0:y1, x0:x1]
         off = (x0, y0)
 
         hsv = self._hsv(frame)
         fronts = self._blobs(hsv, self.colors['front'], limit=6, offset=off)
+        counts = {'front': len(fronts)}
 
         robots = []
         for key, rid in (('team_a', self.robot_ids[0]),
                          ('team_b', self.robot_ids[1])):
-            r = self._find_robot(hsv, key, rid, fronts, off)
+            r = self._find_robot(hsv, key, rid, fronts, off, counts)
             if r is not None:
                 robots.append(r)
 
-        ball = self._find_ball(hsv, [(r.px, r.py) for r in robots], off)
+        ball = self._find_ball(hsv, [(r.px, r.py) for r in robots], off, counts)
 
-        det = Detection(robots=robots)
+        det = Detection(robots=robots, counts=counts)
         if ball is not None:
             det.ball_px = (ball.cx, ball.cy)
             (bx, by), = self.calib.to_meters([(ball.cx, ball.cy)])
             det.ball_m = (float(bx), float(by))
         return det
+
+    # -- diagnóstico da cor ----------------------------------------------
+
+    def _masks(self, hsv):
+        """A máscara final de cada cor — a mesma que a detecção usa.
+
+        Ter isto separado importa: a medida de qualidade só vale se for feita
+        na máscara de verdade, com a abertura morfológica incluída. Medir na
+        `inRange` crua daria uma folga otimista, porque a abertura come
+        exatamente os pixels de borda que estão por um fio dentro da faixa.
+        """
+        return {name: cv2.morphologyEx(spec.mask(hsv), cv2.MORPH_OPEN,
+                                       self._kernel)
+                for name, spec in self.colors.items()}
+
+    def quality(self, frame: np.ndarray, focus: str = None,
+                scatter: int = 500) -> dict:
+        """Relatório de qualidade das quatro cores no quadro atual.
+
+        `focus` é a cor que a GUI está mostrando; só ela devolve a nuvem de
+        pixels (a nuvem é o que pesa no JSON, e só uma cabe na tela por vez).
+        """
+        x0, y0, x1, y1 = self.current_roi(frame.shape)
+        hsv = self._hsv(frame[y0:y1, x0:x1])
+        masks = self._masks(hsv)
+        return {
+            'roi': [x0, y0, x1, y1],
+            'colors': {
+                name: color_report(hsv, spec, masks[name],
+                                   scatter=scatter if name == focus else 0)
+                for name, spec in self.colors.items()
+            },
+            'overlap': mask_overlaps(masks),
+        }
+
+    def mask_view(self, frame: np.ndarray, name: str) -> dict:
+        """Tudo o que é preciso para desenhar a máscara de uma cor.
+
+        É a resposta visual direta a "por que esta cor não está pegando":
+        vendo a máscara dá para separar de imediato os dois casos que na
+        imagem normal são idênticos — a etiqueta acesa pela metade (faixa
+        apertada) e meio campo aceso junto com ela (faixa larga).
+
+        Devolve as máscaras de aceitos e rejeitados já separadas, em vez de só
+        a lista de blobs, porque quem desenha precisa do contorno exato de
+        cada grupo. Separar por área do contorno depois daria diferente da
+        contagem de pixels do componente e pintaria de cor errada justamente
+        o blob que está em cima do limiar `min_area` — que é o que mais
+        interessa olhar.
+        """
+        x0, y0, x1, y1 = self.current_roi(frame.shape)
+        spec = self.colors[name]
+        hsv = self._hsv(frame[y0:y1, x0:x1])
+        m = cv2.morphologyEx(spec.mask(hsv), cv2.MORPH_OPEN, self._kernel)
+
+        n, lab, stats, cent = cv2.connectedComponentsWithStats(m, 8)
+        lut = np.zeros(max(n, 1), np.uint8)
+        acc, rej = [], []
+        for i in range(1, n):
+            a = int(stats[i, cv2.CC_STAT_AREA])
+            blob = Blob(float(cent[i][0]) + x0, float(cent[i][1]) + y0, a)
+            if spec.min_area <= a <= spec.max_area:
+                lut[i] = 255
+                acc.append(blob)
+            else:
+                rej.append(blob)
+        acc.sort(key=lambda b: -b.area)
+        rej.sort(key=lambda b: -b.area)
+
+        acc_mask = lut[lab]
+        return {'mask': m, 'offset': (x0, y0), 'accepted': acc,
+                'rejected': rej, 'acc_mask': acc_mask,
+                'rej_mask': cv2.subtract(m, acc_mask)}

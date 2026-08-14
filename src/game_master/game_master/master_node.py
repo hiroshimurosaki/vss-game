@@ -16,6 +16,7 @@ mesmo código no simulador e no campo real, porque os dois falam /game_data.
 
 import asyncio
 import json
+import math
 import os
 import threading
 from datetime import datetime
@@ -29,7 +30,20 @@ from shared_interfaces.msg import GameData, GameStatus, HighScore, HighScoreList
 from aiohttp import web, WSMsgType
 from ament_index_python.packages import get_package_share_directory
 
-from . import rules
+from . import duelo, rules
+
+
+def _num(value):
+    """NaN vira None antes de virar JSON.
+
+    `json.dumps` escreve `NaN` sem reclamar, mas `JSON.parse` do navegador
+    rejeita — e o sintoma é a TV congelando sem erro nenhum no log do árbitro,
+    porque quem quebra é o outro lado do WebSocket. Um turno que ainda não
+    aconteceu tem tempo NaN, então isto acontece já no primeiro round.
+    """
+    if value is None or math.isnan(value):
+        return None
+    return round(float(value), 2)
 
 
 class GameMaster(Node):
@@ -38,6 +52,10 @@ class GameMaster(Node):
         super().__init__('game_master')
 
         self.declare_parameter('port', 8090)
+
+        # 'classico' = dois robôs, partida simultânea (rules.py).
+        # 'duelo'    = um robô só, turnos alternados (duelo.py).
+        self.declare_parameter('mode', 'classico')
         self.declare_parameter('target_score', 2)
         self.declare_parameter('time_limit', 180.0)
         self.declare_parameter('countdown', 3.0)
@@ -53,24 +71,71 @@ class GameMaster(Node):
 
         self.declare_parameter('difficulty', 'MEDIO')
 
-        default_scores = os.path.join(os.path.expanduser('~'), '.vss-game',
-                                      'highscores.json')
+        # ── Só do modo duelo ─────────────────────────────────────────────
+        self.declare_parameter('turn_limit', 30.0)
+        self.declare_parameter('rounds_to_win', 2)
+        self.declare_parameter('max_rounds', 5)
+        self.declare_parameter('round_hold', 5.0)
+        self.declare_parameter('prep_min', 3.0)
+        self.declare_parameter('prep_max', 20.0)
+
+        # A marca de onde todo turno começa, e as tolerâncias com que o árbitro
+        # aceita que robô e bola estão no lugar. Precisam bater com o home_x/y
+        # do ai_player, senão a IA para num ponto que o árbitro não aceita e o
+        # preparo sempre vai até o teto.
+        self.declare_parameter('home_x', -99.0)
+        self.declare_parameter('home_y', 0.0)
+        # Qual robô é o do duelo. Um só em campo, e é o robô da IA que o
+        # visitante toma emprestado — daí o 0, a convenção do projeto inteiro.
+        self.declare_parameter('robot_id', 0)
+        self.declare_parameter('robot_ready_radius', 0.12)
+        self.declare_parameter('ball_ready_radius', 0.15)
+
+        self._mode = str(self.get_parameter('mode').value).lower()
+        self._duelo = self._mode == 'duelo'
+
+        # Tempo de duelo e tempo de partida clássica não são a mesma grandeza —
+        # um é soma de turnos, o outro é uma partida inteira. Misturar os dois
+        # na mesma tabela produziria um ranking que não significa nada, então
+        # cada modo tem o seu arquivo.
+        nome = 'highscores_duelo.json' if self._duelo else 'highscores.json'
+        default_scores = os.path.join(os.path.expanduser('~'), '.vss-game', nome)
         self.declare_parameter('scores_file', default_scores)
 
-        config = rules.Config(
-            target_score=int(self.get_parameter('target_score').value),
-            time_limit=float(self.get_parameter('time_limit').value),
-            countdown=float(self.get_parameter('countdown').value),
-            goal_pause=float(self.get_parameter('goal_pause').value),
-            result_hold=float(self.get_parameter('result_hold').value),
-        )
-
-        self.engine = rules.Engine(config=config)
+        if self._duelo:
+            self.engine = duelo.Engine(config=duelo.Config(
+                rounds_to_win=int(self.get_parameter('rounds_to_win').value),
+                max_rounds=int(self.get_parameter('max_rounds').value),
+                turn_limit=float(self.get_parameter('turn_limit').value),
+                countdown=float(self.get_parameter('countdown').value),
+                goal_pause=float(self.get_parameter('goal_pause').value),
+                round_hold=float(self.get_parameter('round_hold').value),
+                result_hold=float(self.get_parameter('result_hold').value),
+                prep_min=float(self.get_parameter('prep_min').value),
+                prep_max=float(self.get_parameter('prep_max').value),
+            ))
+        else:
+            self.engine = rules.Engine(config=rules.Config(
+                target_score=int(self.get_parameter('target_score').value),
+                time_limit=float(self.get_parameter('time_limit').value),
+                countdown=float(self.get_parameter('countdown').value),
+                goal_pause=float(self.get_parameter('goal_pause').value),
+                result_hold=float(self.get_parameter('result_hold').value),
+            ))
 
         self._half_length = float(self.get_parameter('field_length').value) / 2.0
         self._goal_half = float(self.get_parameter('goal_width').value) / 2.0
         self._goal_margin = float(self.get_parameter('goal_margin').value)
         self._difficulty = str(self.get_parameter('difficulty').value).upper()
+
+        home_x = float(self.get_parameter('home_x').value)
+        if home_x <= -99.0:
+            home_x = -self._half_length * 0.55
+
+        self._home = (home_x, float(self.get_parameter('home_y').value))
+        self._robot_id = int(self.get_parameter('robot_id').value)
+        self._robot_radius = float(self.get_parameter('robot_ready_radius').value)
+        self._ball_radius = float(self.get_parameter('ball_ready_radius').value)
 
         self._scores_path = str(self.get_parameter('scores_file').value)
         self._scores = self._load_scores()
@@ -86,8 +151,11 @@ class GameMaster(Node):
         self._status_pub = self.create_publisher(GameStatus, '/game/status', 10)
         self._scores_pub = self.create_publisher(HighScoreList, '/game/highscores', 10)
         self._ai_enabled_pub = self.create_publisher(Bool, '/ai/enabled', 10)
+        self._ai_home_pub = self.create_publisher(Bool, '/ai/home', 10)
+        self._joy_source_pub = self.create_publisher(String, '/game/joy_source', 10)
         self._difficulty_pub = self.create_publisher(String, '/ai/difficulty', 10)
         self._sim_reset_pub = self.create_publisher(Empty, '/sim/reset', 10)
+        self._sim_ball_pub = self.create_publisher(Empty, '/sim/reset_ball', 10)
 
         self.create_timer(1.0 / 30.0, self._tick)
 
@@ -117,15 +185,47 @@ class GameMaster(Node):
             return
 
         with self._lock:
+            if self._duelo:
+                self.engine.set_ready(*self._ready_from(msg))
+
             scorer = self.engine.on_ball(
                 self._now(), msg.ball.x, msg.ball.y,
                 self._half_length, self._goal_half, self._goal_margin)
 
-        if scorer:
-            m = self.engine.match
+        if not scorer:
+            return
+
+        m = self.engine.match
+
+        if self._duelo:
+            self.get_logger().info(
+                f'GOL do {scorer} em {duelo.format_time(m.elapsed)} | '
+                f'round {m.round_number}: {m.player_rounds} x {m.ai_rounds}')
+        else:
             self.get_logger().info(
                 f'GOL do {scorer} | {m.player_score} x {m.ai_score} | '
                 f'{rules.format_time(m.elapsed)}')
+
+    def _ready_from(self, msg):
+        """O árbitro olhando o campo: robô na marca? bola no centro?
+
+        É medido aqui, e não perguntado à IA, porque quem decide se o turno pode
+        começar é quem enxerga o campo. A IA pode achar que chegou e ter parado
+        20 cm antes por causa de uma roda — e o turno começaria torto.
+        """
+        home_x, home_y = self._home
+
+        robot_ok = False
+        for robot in msg.robots:
+            if robot.id != self._robot_id:
+                continue
+            robot_ok = math.hypot(robot.x - home_x,
+                                  robot.y - home_y) <= self._robot_radius
+            break
+
+        ball_ok = math.hypot(msg.ball.x, msg.ball.y) <= self._ball_radius
+
+        return robot_ok, ball_ok
 
     def _tick(self):
         now = self._now()
@@ -145,7 +245,24 @@ class GameMaster(Node):
         # A IA só joga durante a partida. Fora disso ela fica parada, senão
         # empurra a bola pelo campo enquanto o próximo jogador digita o nome.
         enabled = Bool()
-        enabled.data = (match.state == rules.JOGANDO)
+
+        if self._duelo:
+            # No duelo há três respostas, não duas: a IA está jogando o turno
+            # dela, está levando o robô de volta à marca, ou está fora do
+            # volante. As duas primeiras exigem a IA liberada.
+            fonte = self.engine.joy_source()
+            enabled.data = (fonte == duelo.IA)
+
+            home = Bool()
+            home.data = self.engine.ai_should_go_home()
+            self._ai_home_pub.publish(home)
+
+            source = String()
+            source.data = fonte
+            self._joy_source_pub.publish(source)
+        else:
+            enabled.data = (match.state == rules.JOGANDO)
+
         self._ai_enabled_pub.publish(enabled)
 
         self._broadcast(self._snapshot(status))
@@ -154,7 +271,15 @@ class GameMaster(Node):
         # Recolocar no início da contagem e depois de cada gol. No simulador
         # isso teletransporta; no campo real é um pedido para o operador — que
         # tem a duração do goal_pause para fazer.
-        if new in (rules.CONTAGEM, rules.GOL):
+        #
+        # No duelo o momento é outro: o pedido sai no PREPARO, que é o estado
+        # que existe justamente para isso e que só termina quando o árbitro vê
+        # robô e bola no lugar. Mandar de novo na CONTAGEM desfaria a
+        # verificação que acabou de passar.
+        if self._duelo:
+            if new == duelo.PREPARO:
+                self._sim_ball_pub.publish(Empty())
+        elif new in (rules.CONTAGEM, rules.GOL):
             self._sim_reset_pub.publish(Empty())
 
         if new == rules.FIM:
@@ -165,9 +290,10 @@ class GameMaster(Node):
         m = self.engine.match
 
         if not m.player_won:
+            placar = (f'{m.player_rounds}x{m.ai_rounds} rounds' if self._duelo
+                      else f'{m.player_score}x{m.ai_score}')
             self.get_logger().info(
-                f'{m.player_name} não venceu ({m.player_score}x{m.ai_score}). '
-                f'Fora do ranking.')
+                f'{m.player_name} não venceu ({placar}). Fora do ranking.')
             return
 
         self._scores, position = rules.insert_score(
@@ -188,16 +314,30 @@ class GameMaster(Node):
         status = GameStatus()
         status.state = match.state
         status.player_name = match.player_name
-        status.player_score = match.player_score
-        status.ai_score = match.ai_score
-        status.target_score = self.engine.config.target_score
+
+        if self._duelo:
+            # O duelo é contado em rounds, não em gols. Cabe na mesma mensagem
+            # sem campo novo: "quantos rounds cada um levou" ocupa exatamente o
+            # lugar de "quantos gols cada um fez", e o cronômetro é o do turno
+            # corrente. Quem quiser o detalhe (tempos por round) lê o WebSocket,
+            # que é como a TV é alimentada.
+            status.player_score = match.player_rounds
+            status.ai_score = match.ai_rounds
+            status.target_score = self.engine.config.rounds_to_win
+            status.time_limit = self.engine.config.turn_limit
+            status.last_scorer = match.driver
+        else:
+            status.player_score = match.player_score
+            status.ai_score = match.ai_score
+            status.target_score = self.engine.config.target_score
+            status.time_limit = self.engine.config.time_limit
+            status.last_scorer = match.last_scorer
+
         status.elapsed = match.elapsed
-        status.time_limit = self.engine.config.time_limit
         status.state_remaining = self.engine.state_remaining(now)
         status.player_won = match.player_won
         status.ranked = match.ranked
         status.rank_position = match.rank_position
-        status.last_scorer = match.last_scorer
         status.difficulty = self._difficulty
         return status
 
@@ -264,10 +404,23 @@ class GameMaster(Node):
                 self.engine.toggle_pause(now)
 
             elif kind == 'goal':
-                scorer = (rules.JOGADOR if data.get('who') == 'player'
-                          else rules.IA)
-                self.engine.force_goal(now, scorer)
-                self.get_logger().info(f'Gol manual do árbitro: {scorer}')
+                if self._duelo:
+                    # No duelo o gol é sempre de quem está com o volante — não
+                    # há como o operador creditar o turno errado.
+                    driver = self.engine.match.driver
+                    self.engine.force_goal(now)
+                    self.get_logger().info(f'Gol manual do árbitro: {driver}')
+                else:
+                    scorer = (rules.JOGADOR if data.get('who') == 'player'
+                              else rules.IA)
+                    self.engine.force_goal(now, scorer)
+                    self.get_logger().info(f'Gol manual do árbitro: {scorer}')
+
+            elif kind == 'skip' and self._duelo:
+                # A bola saiu e não volta, o robô travou na parede: encerra o
+                # turno sem gol em vez de obrigar a fila a esperar o teto.
+                self.engine.skip_turn(now)
+                self.get_logger().info('Turno encerrado sem gol pelo operador.')
 
             elif kind == 'difficulty':
                 msg = String()
@@ -299,6 +452,48 @@ class GameMaster(Node):
             'last_scorer': status.last_scorer,
             'difficulty': status.difficulty,
             'scores': self._scores,
+            'mode': self._mode,
+            **(self._duelo_snapshot() if self._duelo else {}),
+        }
+
+    def _duelo_snapshot(self):
+        """O detalhe que só o duelo tem, e que só a TV consome.
+
+        Vai pelo WebSocket e não pela GameStatus de propósito: são dados de
+        desenho (tempos por round, prontidão do campo), não contrato entre nós.
+        Enfiá-los na mensagem obrigaria a recompilar o shared_interfaces — e o
+        C++ inteiro junto — cada vez que a tela quisesse mostrar mais uma coisa.
+        """
+        m = self.engine.match
+        c = self.engine.config
+
+        return {
+            'driver': m.driver,
+            'round_number': m.round_number,
+            'player_rounds': m.player_rounds,
+            'ai_rounds': m.ai_rounds,
+            'rounds_to_win': c.rounds_to_win,
+            'turn_limit': c.turn_limit,
+            'player_total': m.player_total,
+            'robot_ready': m.robot_ready,
+            'ball_ready': m.ball_ready,
+            'current': {
+                'player_time': _num(m.current.player_time),
+                'ai_time': _num(m.current.ai_time),
+                'player_scored': m.current.player_scored,
+                'ai_scored': m.current.ai_scored,
+            },
+            'rounds': [
+                {
+                    'number': r.number,
+                    'player_time': _num(r.player_time),
+                    'ai_time': _num(r.ai_time),
+                    'player_scored': r.player_scored,
+                    'ai_scored': r.ai_scored,
+                    'winner': r.winner,
+                }
+                for r in m.rounds
+            ],
         }
 
     def _start_web_server(self):
@@ -332,7 +527,11 @@ class GameMaster(Node):
         asyncio.set_event_loop(self._loop)
 
         app = web.Application()
-        app.router.add_get('/', self._serve('tv.html'))
+        # No duelo a raiz serve a tela do duelo: o endereço que o operador
+        # decorou continua sendo o mesmo, e é ele que vai na TV.
+        app.router.add_get('/', self._serve(
+            'duelo.html' if self._duelo else 'tv.html'))
+        app.router.add_get('/duelo', self._serve('duelo.html'))
         app.router.add_get('/operador', self._serve('operator.html'))
         app.router.add_get('/vss.css', self._serve('vss.css'))
         # Fontes auto-hospedadas. A feira não tem rede garantida e a

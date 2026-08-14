@@ -45,6 +45,38 @@ ros2 launch startup game.py use_vision:=true target_score:=3 time_limit:=120.0
 ros2 launch startup game.py use_vision:=true difficulty:=DIFICIL
 ```
 
+### Se só um robô estiver funcionando
+
+Modo duelo: um robô, dois motoristas, turnos alternados. O visitante joga o
+turno dele, o Franky joga o dele **no mesmo robô**, e ganha o round quem levou
+menos tempo até o gol. Melhor de três.
+
+```bash
+# na feira, com a câmera e o robô
+ros2 launch startup duelo.py use_vision:=true use_radio:=true use_joy:=true \
+    serial_port:=$(./tools/porta.sh)
+
+# ensaio completo no simulador, sem robô e sem gamepad (teclado da GUI dirige)
+ros2 launch startup duelo.py
+```
+
+O robô é o **id 0**, etiqueta **amarela**: `./tools/gravar.sh feira --id 0`.
+Os dois motoristas atacam o **gol da direita**.
+
+A única tarefa manual é **repor a bola no centro** entre os turnos — o robô
+volta à marca sozinho, dirigido pela IA. A contagem só começa quando o árbitro
+vê robô e bola no lugar (com teto de 20 s, para a fila nunca travar).
+
+```bash
+ros2 launch startup duelo.py use_vision:=true difficulty:=FACIL
+ros2 launch startup duelo.py use_vision:=true turn_limit:=40.0 rounds_to_win:=3
+./tools/duelo_bench.py --franky     # quanto o Franky leva, por dificuldade
+```
+
+Tempo do Franky até o gol, medido: **FÁCIL 19 s · MÉDIO 11 s · DIFÍCIL 6 s**
+(medianas). Escolha o preset que deixa ele um pouco acima da média das
+primeiras pessoas — e meça de novo se trocar de campo.
+
 **Parar tudo:**
 
 ```bash

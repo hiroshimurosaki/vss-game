@@ -52,6 +52,16 @@ class SimNode(Node):
         # visitante (defende a direita). O teclado da GUI publica no /joy_N do
         # jogador, exatamente como faria o controle físico dele.
         self.declare_parameter('player_id', 1)
+        # 1 = modo duelo: só o robô 0 em campo, e os dois motoristas revezam
+        # nele. Ver physics.reset_positions.
+        self.declare_parameter('num_robots', 2)
+
+        # Justamente por publicar no mesmo tópico, o teclado da GUI e um
+        # controle físico não cabem juntos: o _tick publica a 60 Hz mesmo sem
+        # tecla apertada, e esses zeros sobrescreveriam o comando do controle
+        # no joy_aggregator — o robô ficaria quase parado, aos solavancos.
+        # Com use_joy:=true o launch desliga isto e o controle fica sozinho.
+        self.declare_parameter('publish_joy', True)
 
         # Ruído gaussiano somado às posições publicadas, em metros. A visão real
         # treme; se a IA for afinada contra posições perfeitas ela fica nervosa
@@ -79,7 +89,9 @@ class SimNode(Node):
             wheel_base=self.get_parameter('axle_length').value,
         )
 
-        self.world = physics.make_default_world(field_spec, robot_spec)
+        self.world = physics.make_default_world(
+            field_spec, robot_spec,
+            robot_count=int(self.get_parameter('num_robots').value))
         self.rate = float(self.get_parameter('rate_hz').value)
         self.port = int(self.get_parameter('port').value)
         self.noise = float(self.get_parameter('vision_noise').value)
@@ -103,8 +115,11 @@ class SimNode(Node):
 
         self._auto_referee = bool(self.get_parameter('auto_referee').value)
         self.create_subscription(Empty, '/sim/reset', self._on_reset_request, 10)
+        self.create_subscription(Empty, '/sim/reset_ball',
+                                 self._on_reset_ball_request, 10)
 
         self._player_id = int(self.get_parameter('player_id').value)
+        self._publish_joy_enabled = bool(self.get_parameter('publish_joy').value)
         joy_topic = f'/joy_{self._player_id}'
 
         self._game_data_pub = self.create_publisher(GameData, '/game_data', 10)
@@ -120,8 +135,13 @@ class SimNode(Node):
 
         self.get_logger().info(
             f'Simulador rodando. Abra http://localhost:{self.port}')
-        self.get_logger().info(
-            f'Teclado da GUI -> {joy_topic} (robô {self._player_id}, o jogador)')
+        if self._publish_joy_enabled:
+            self.get_logger().info(
+                f'Teclado da GUI -> {joy_topic} (robô {self._player_id}, o jogador)')
+        else:
+            self.get_logger().info(
+                f'Teclado da GUI DESLIGADO: quem manda no robô {self._player_id} '
+                f'é o controle físico, que publica em {joy_topic}')
 
     # ── ROS ──────────────────────────────────────────────────────────────
 
@@ -134,6 +154,17 @@ class SimNode(Node):
     def _on_reset_request(self, _msg):
         with self._lock:
             physics.reset_positions(self.world)
+
+    def _on_reset_ball_request(self, _msg):
+        """Só a bola volta ao centro; os robôs ficam onde estão.
+
+        É o que o modo duelo pede entre os turnos: lá quem recoloca o robô é a
+        própria IA, dirigindo-o de volta à marca. Se o simulador teletransportasse
+        o robô junto, o comportamento que a feira vai ver — o robô voltando
+        sozinho — seria o único que nunca apareceria em teste.
+        """
+        with self._lock:
+            physics.reset_ball(self.world)
 
     def _on_ai_debug(self, msg):
         self._ai_debug = {
@@ -165,7 +196,8 @@ class SimNode(Node):
 
             snapshot = self._snapshot()
 
-        self._publish_joy()
+        if self._publish_joy_enabled:
+            self._publish_joy()
         self._publish_game_data(snapshot)
         self._broadcast(snapshot)
 
@@ -243,10 +275,8 @@ class SimNode(Node):
         msg.axes = [0.0] * 6
         msg.buttons = [0] * 3
 
-        # Convenção "signed": solto = +1.0, apertado = -1.0.
-        msg.axes[4] = 1.0
-        msg.axes[5] = 1.0
-
+        # Convenção "sdl": solto = 0.0, fundo = -1.0 — a mesma do
+        # game_controller_node. O neutro é o próprio zero do array.
         keys = set(self._keys)
 
         if 'w' in keys:

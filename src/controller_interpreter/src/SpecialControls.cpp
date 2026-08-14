@@ -51,8 +51,12 @@ void SpecialControls::_joyListCallback(const shared_interfaces::msg::JoyList::Sh
         }
 
         actions_list.actions.push_back(actions);
-    
-        RCLCPP_INFO(
+
+        // DEBUG e não INFO: isto sai a cada /joy_list, ou seja, 50 Hz vezes o
+        // número de robôs. Em INFO enterra o resto do log — inclusive o aviso
+        // de controle perdido do joy_aggregator, que é o único que interessa
+        // no meio de uma partida.
+        RCLCPP_DEBUG(
             this->get_logger(),
             "Robô %d - Joy recebido -> buttons: %ld",
             id, buttons.size());

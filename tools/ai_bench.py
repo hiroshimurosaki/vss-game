@@ -98,7 +98,9 @@ def play(diff, seed, timeout=25.0, dt=1 / 60.0, opponent_parked=True):
 def _direction_node(axes, geo):
     """Réplica exata do DirectionNode, para o benchmark medir o caminho real."""
     def norm(raw):
-        return max(0.0, min(1.0, (1.0 - raw) / 2.0))
+        # Convenção "sdl": solto = 0.0, fundo = -1.0. Espelha o
+        # DirectionNode::_normalizeTrigger — mudou lá, mude aqui.
+        return max(0.0, min(1.0, -raw))
 
     throttle = max(-1.0, min(1.0, norm(axes[5]) - norm(axes[4])))
     return throttle * geo.max_linear, axes[0] * geo.max_angular

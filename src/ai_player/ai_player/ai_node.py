@@ -40,11 +40,26 @@ class AiNode(Node):
 
         self.declare_parameter('robot_id', 0)
         self.declare_parameter('difficulty', 'MEDIO')
+
+        # Qual conjunto de presets: 'jogo' (dois robôs, com adversário em campo)
+        # ou 'duelo' (turno solo). Os números são diferentes porque o
+        # comportamento defensivo e o erro de mira se comportam de outro jeito
+        # sem adversário — ver o comentário de PRESETS_DUELO em brain.py.
+        self.declare_parameter('preset_set', 'jogo')
         self.declare_parameter('rate_hz', 30.0)
 
         self.declare_parameter('field_length', 1.50)
         self.declare_parameter('field_width', 1.30)
         self.declare_parameter('goal_width', 0.40)
+
+        # Modo duelo: para onde a IA leva o robô entre um turno e outro, quando
+        # /ai/home manda. -99.0 = a marca de saída do próprio robô, calculada do
+        # campo — a mesma que o simulador usa no kickoff.
+        self.declare_parameter('home_x', -99.0)
+        self.declare_parameter('home_y', 0.0)
+        # Recolocar não é jogar: vai mais devagar que o máximo porque alguém
+        # está com a mão no campo repondo a bola enquanto ele atravessa.
+        self.declare_parameter('home_speed_frac', 0.7)
 
         # Precisam bater com os do DirectionNode: são o que traduz a decisão
         # em posição de gatilho.
@@ -70,7 +85,26 @@ class AiNode(Node):
             max_angular=self.get_parameter('max_angular_velocity').value,
         )
 
+        conjunto = str(self.get_parameter('preset_set').value).lower()
+
+        if conjunto not in brain.CONJUNTOS:
+            self.get_logger().warn(
+                f"preset_set '{conjunto}' desconhecido. Usando 'jogo'. "
+                f"Opções: {', '.join(brain.CONJUNTOS)}")
+            conjunto = 'jogo'
+
+        self._preset_set = conjunto
+        self._presets = brain.CONJUNTOS[conjunto]
+
         self._diff = self._build_difficulty()
+
+        home_x = float(self.get_parameter('home_x').value)
+        if home_x <= -99.0:
+            home_x = -self._geo.half_length * 0.55
+
+        self._home = (home_x, float(self.get_parameter('home_y').value))
+        self._home_speed = float(self.get_parameter('home_speed_frac').value)
+        self._home_mode = False
 
         self._enabled = True
         self._perception_buffer = []
@@ -82,6 +116,7 @@ class AiNode(Node):
 
         self.create_subscription(GameData, '/game_data', self._on_game_data, 10)
         self.create_subscription(Bool, '/ai/enabled', self._on_enabled, 10)
+        self.create_subscription(Bool, '/ai/home', self._on_home, 10)
         self.create_subscription(String, '/ai/difficulty', self._on_difficulty, 10)
 
         self._joy_pub = self.create_publisher(Joy, joy_topic, 10)
@@ -92,23 +127,28 @@ class AiNode(Node):
 
         self.get_logger().info(
             f'IA no robô {self._robot_id} -> {joy_topic} | '
-            f'dificuldade {self._diff.name}')
+            f'presets "{self._preset_set}" | dificuldade {self._diff.name}')
         self._log_difficulty()
 
     # ── Configuração ─────────────────────────────────────────────────────
 
     def _build_difficulty(self):
-        name = str(self.get_parameter('difficulty').value).upper()
+        return self._preset(str(self.get_parameter('difficulty').value))
 
-        if name not in brain.PRESETS:
-            self.get_logger().warn(
-                f"Dificuldade '{name}' desconhecida. Usando MEDIO. "
-                f"Opções: {', '.join(brain.PRESETS)}")
+    def _preset(self, name, avisa=True):
+        """Monta a dificuldade pelo nome, já com as sobrescritas aplicadas."""
+        name = name.upper()
+        presets = self._presets
+
+        if name not in presets:
+            if avisa:
+                self.get_logger().warn(
+                    f"Dificuldade '{name}' desconhecida. Usando MEDIO. "
+                    f"Opções: {', '.join(presets)}")
             name = 'MEDIO'
 
         # Cópia, para as sobrescritas não contaminarem o preset global.
-        preset = brain.PRESETS[name]
-        diff = brain.Difficulty(**vars(preset))
+        diff = brain.Difficulty(**vars(presets[name]))
 
         overrides = [
             ('speed_frac', 'speed_frac', -1.0),
@@ -135,15 +175,21 @@ class AiNode(Node):
             f'  erro de mira {d.aim_noise * 100:.0f} cm')
 
     def _on_difficulty(self, msg):
-        """Permite trocar a dificuldade em runtime, sem reiniciar nada."""
+        """Permite trocar a dificuldade em runtime, sem reiniciar nada.
+
+        Passa pelo mesmo `_preset` da inicialização, e por um motivo concreto:
+        antes esta função reconstruía do preset cru e **jogava as sobrescritas
+        fora**. Quem tivesse afinado a IA por `ros2 param set` perdia o ajuste
+        no instante em que o operador tocasse nos botões de dificuldade da tela,
+        sem nada no log dizendo o que aconteceu.
+        """
         name = msg.data.upper()
 
-        if name not in brain.PRESETS:
+        if name not in self._presets:
             self.get_logger().warn(f"Dificuldade '{name}' desconhecida.")
             return
 
-        preset = brain.PRESETS[name]
-        self._diff = brain.Difficulty(**vars(preset))
+        self._diff = self._preset(name)
         self._cached_target = None
 
         self.get_logger().info(f'Dificuldade trocada para {name}')
@@ -157,6 +203,18 @@ class AiNode(Node):
 
         if not msg.data:
             self._cached_target = None
+
+    def _on_home(self, msg):
+        """Modo duelo: leva o robô à marca em vez de jogar.
+
+        Não substitui o /ai/enabled — some com ele. Recolocar só acontece com a
+        IA liberada, então o árbitro precisa mandar os dois.
+        """
+        if msg.data != self._home_mode:
+            self.get_logger().info(
+                'IA ' + ('voltando à marca' if msg.data else 'jogando'))
+        self._home_mode = msg.data
+        self._cached_target = None
 
     # ── Percepção ────────────────────────────────────────────────────────
 
@@ -207,9 +265,20 @@ class AiNode(Node):
                 me = _Point(robot.x, robot.y, robot.orientation)
                 break
 
-        if me is None or not perception.ball_detected:
-            # Sem se enxergar ou sem bola, ela para. Um robô que age com
-            # informação vencida bate na parede.
+        if me is None:
+            # Sem se enxergar, ela para. Um robô que age com informação vencida
+            # bate na parede.
+            self._publish_joy(0.0, 0.0)
+            self._publish_debug(brain.Decision(state=brain.PARADO), perception)
+            return
+
+        # Voltar à marca não depende da bola: é justamente o momento em que
+        # alguém está com a mão no campo repondo ela.
+        if self._home_mode:
+            self._drive_home(me, perception)
+            return
+
+        if not perception.ball_detected:
             self._publish_joy(0.0, 0.0)
             self._publish_debug(brain.Decision(state=brain.PARADO), perception)
             return
@@ -243,6 +312,29 @@ class AiNode(Node):
 
         self._publish_joy(decision.linear, decision.angular)
         self._publish_debug(decision, perception)
+
+    def _drive_home(self, me, perception):
+        """Leva o robô de volta à marca, entre os turnos do duelo.
+
+        Usa o mesmo `go_to_point` do jogo, com freio ligado — aqui o objetivo é
+        parar em cima do ponto, não atravessá-lo. A dificuldade NÃO entra: um
+        preset FACIL faria o robô rastejar de volta e a fila esperaria por uma
+        escolha que só deveria valer enquanto ele joga.
+        """
+        home_x, home_y = self._home
+
+        linear, angular = brain.go_to_point(
+            me, home_x, home_y, self._geo, self._diff, brake=True)
+
+        linear *= self._home_speed
+        angular *= self._home_speed
+
+        self._publish_joy(linear, angular)
+        self._publish_debug(
+            brain.Decision(linear=linear, angular=angular,
+                           state=brain.VOLTANDO,
+                           target_x=home_x, target_y=home_y),
+            perception)
 
     def _publish_joy(self, linear, angular):
         msg = Joy()

@@ -39,6 +39,10 @@ POSICIONAR = 'POSICIONAR'
 DEFENDER = 'DEFENDER'
 PARADO = 'PARADO'
 
+# Só no modo duelo: a IA não está jogando, está levando o robô de volta à marca
+# entre um turno e outro. Ignora a bola de propósito.
+VOLTANDO = 'VOLTANDO'
+
 
 @dataclass
 class Difficulty:
@@ -103,6 +107,80 @@ PRESETS = {
         attack_tolerance=0.35,
     ),
 }
+
+
+# ── Presets do modo duelo ────────────────────────────────────────────────
+#
+# Os presets de cima NÃO servem para o duelo, e não é questão de gosto — está
+# medido (`./tools/duelo_bench.py --franky`, 14/08/2026, 24 tentativas por
+# ponto, robô na marca e bola no centro, que é como todo turno começa):
+#
+#   FACIL, como está no jogo ......... 0% de conclusão em 45 s
+#   MEDIO, como está no jogo ......... 82%, mediana 19,8 s, pior 33,4 s
+#
+# Duas coisas quebram na travessia:
+#
+# **1. Defender não existe no duelo.** `home_x_max` manda a IA largar a bola e
+# voltar ao gol quando ela passa do limite. Isso é bom comportamento *contra
+# alguém*; no turno do Franky não há ninguém em campo, e o FACIL (home_x_max
+# negativo, zagueiro puro) fica parado no próprio gol até o teto estourar.
+#
+# **2. O erro de mira se acumula sem ninguém para corrigir.** Na partida normal
+# o humano mexe na bola o tempo todo e o ruído se dilui; no turno solo a IA é a
+# única coisa agindo, e 3 cm de erro por replanejamento empurram a bola de lado
+# a cada toque. Foi o ruído, não a velocidade, que derrubou a conclusão para 38%
+# em parte da grade — e um Franky que não conclui 1 turno em 4 é péssima TV.
+#
+# Daí a regra destes presets: **ruído baixo e fixo, velocidade como único
+# botão.** Como estes três ficaram, medidos (40 tentativas cada):
+#
+#   preset    conclui  mediana    p90    pior
+#   FACIL       100%    19,1 s  31,9 s  43,6 s
+#   MEDIO        95%    10,7 s  17,3 s  26,3 s
+#   DIFICIL      95%     6,2 s  10,2 s  18,3 s
+#
+# O `turn_limit` do duelo (30 s) precisa ficar acima do "pior" do preset em uso,
+# senão o próprio Franky estoura o tempo. No MEDIO e no DIFICIL sobra folga; no
+# FACIL ele estoura em ~1 turno a cada 10 — o que é aceitável de propósito,
+# porque estourar entrega o round ao visitante justamente no ajuste mais fácil.
+#
+# RESSALVA: o bench não simula o `reaction_delay` (ele mora no nó, que segura
+# os snapshots). No campo os tempos saem um pouco piores que estes. Afine ao
+# vivo com `ros2 param set /ai_player speed_frac 0.5` e meça de novo.
+
+PRESETS_DUELO = {
+    'FACIL': Difficulty(
+        name='FACIL',
+        speed_frac=0.40,
+        reaction_delay=0.25,
+        replan_period=0.30,
+        home_x_max=0.65,       # nunca desiste da bola: não há gol a defender
+        aim_noise=0.01,
+        attack_tolerance=0.55,
+    ),
+    'MEDIO': Difficulty(
+        name='MEDIO',
+        speed_frac=0.55,
+        reaction_delay=0.15,
+        replan_period=0.30,
+        home_x_max=0.65,
+        aim_noise=0.01,
+        attack_tolerance=0.55,
+    ),
+    'DIFICIL': Difficulty(
+        name='DIFICIL',
+        speed_frac=0.70,
+        reaction_delay=0.10,
+        replan_period=0.30,
+        home_x_max=0.65,
+        aim_noise=0.01,
+        attack_tolerance=0.45,
+    ),
+}
+
+
+#: Os conjuntos de preset, pelo nome que o parâmetro `preset_set` usa.
+CONJUNTOS = {'jogo': PRESETS, 'duelo': PRESETS_DUELO}
 
 
 @dataclass
@@ -300,7 +378,7 @@ def decide(ball, me, geo: Geometry, diff: Difficulty,
 
 
 def to_joy_axes(linear, angular, geo: Geometry):
-    """Converte (linear, angular) nos eixos de um Joy, convenção "signed".
+    """Converte (linear, angular) nos eixos de um Joy, convenção "sdl".
 
     É o inverso exato do que o DirectionNode faz. Parece um rodeio — a IA
     poderia publicar Direction direto — mas passar pelo mesmo caminho do
@@ -316,13 +394,12 @@ def to_joy_axes(linear, angular, geo: Geometry):
 
     axes[0] = steer
 
-    # Convenção signed: solto = +1.0, fundo = -1.0.
-    axes[4] = 1.0   # L2, a ré
-    axes[5] = 1.0   # R2, a frente
-
+    # Convenção "sdl", a mesma que o game_controller_node produz: solto = 0.0,
+    # fundo = -1.0 (ele nega os eixos do SDL). O neutro é o próprio zero do
+    # array — não há o que lembrar de preencher.
     if throttle >= 0:
-        axes[5] = 1.0 - 2.0 * throttle
+        axes[5] = -throttle     # R2, a frente
     else:
-        axes[4] = 1.0 - 2.0 * (-throttle)
+        axes[4] = throttle      # L2, a ré (throttle já é negativo)
 
     return axes

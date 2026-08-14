@@ -1,16 +1,34 @@
-"""O jogo completo da feira, rodando no simulador.
+"""O duelo de revezamento: UM robô só, dois motoristas, turnos alternados.
 
-    ros2 launch startup game.py
+    ros2 launch startup duelo.py                    # no simulador
+    ros2 launch startup duelo.py use_vision:=true use_radio:=true use_joy:=true \\
+        serial_port:=$(./tools/porta.sh)            # na feira, com o robô de verdade
 
-Abra três coisas:
+Abra:
 
     http://localhost:8090/          TV (tela cheia, para o público)
     http://localhost:8090/operador  painel de quem toca o estande
-    http://localhost:8080/          simulador (só enquanto não há robôs)
+    http://localhost:8080/          simulador (só enquanto não há robô)
 
-Quando os robôs estiverem prontos, este mesmo launch troca duas peças e o resto
-continua igual: sai o `simulator`, entram `vision_game` (publicando /game_data)
-e `radio_communication` (consumindo /motorVelocities).
+## Para que serve
+
+Quando só há um robô funcionando, o formato normal (dois robôs no campo ao mesmo
+tempo) simplesmente não acontece. Este launch troca o duelo simultâneo por um
+duelo alternado: o visitante joga o turno dele, o Franky joga o turno dele NO
+MESMO ROBÔ, e ganha o round quem levou menos tempo até o gol. Melhor de três.
+
+## As duas diferenças que importam em relação ao game.py
+
+**1. Um robô, e ele é o 0.** A convenção do projeto não muda — o robô 0 é o da
+IA — o visitante é que toma o volante emprestado nos turnos dele. Grave o robô
+com `./tools/gravar.sh feira --id 0`, e é a etiqueta AMARELA (team_a) que a
+visão precisa enxergar.
+
+**2. Ninguém publica direto no /joy_0.** As duas fontes vão para tópicos
+privados (`/duelo/joy_humano` e `/duelo/joy_ia`) e o `turn_mux` é o único
+publicador do tópico que o robô ouve. É o que impede o acidente clássico deste
+projeto: dois produtores no mesmo /joy_N fazem o robô gaguejar sem NADA no log
+explicando. Ver a docstring do turn_mux.
 """
 
 from launch import LaunchDescription
@@ -32,11 +50,26 @@ def generate_launch_description():
     max_linear = LaunchConfiguration('max_linear_velocity')
     max_angular = LaunchConfiguration('max_angular_velocity')
 
+    robot_id = LaunchConfiguration('robot_id')
+    home_x = LaunchConfiguration('home_x')
+    home_y = LaunchConfiguration('home_y')
+
+    # O tópico que o robô realmente ouve. Só o turn_mux publica nele.
+    joy_do_robo = ['/joy_', robot_id]
+
+    # Ligado se QUALQUER volante externo estiver plugado — nesse caso o teclado
+    # da GUI do simulador se cala, senão os zeros que ele publica a 60 Hz
+    # atropelam o comando de verdade.
+    volante_externo = PythonExpression([
+        "'", LaunchConfiguration('use_joy'), "'.lower() in ('true','1') or ",
+        "'", LaunchConfiguration('use_keyboard'), "'.lower() in ('true','1')",
+    ])
+
     return LaunchDescription([
         DeclareLaunchArgument('verbose', default_value='false'),
-        DeclareLaunchArgument('num_robots', default_value='2'),
-        DeclareLaunchArgument('player_id', default_value='1'),
-        DeclareLaunchArgument('ai_id', default_value='0'),
+        DeclareLaunchArgument('robot_id', default_value='0',
+                              description='o único robô em campo; 0 é o da IA, '
+                                          'que o visitante toma emprestado'),
         DeclareLaunchArgument('difficulty', default_value='MEDIO'),
 
         DeclareLaunchArgument('sim_port', default_value='8080'),
@@ -50,53 +83,57 @@ def generate_launch_description():
         DeclareLaunchArgument('max_linear_velocity', default_value='0.6'),
         DeclareLaunchArgument('max_angular_velocity', default_value='5.0'),
 
-        DeclareLaunchArgument('target_score', default_value='2',
-                              description='gols para vencer'),
-        DeclareLaunchArgument('time_limit', default_value='180.0',
-                              description='teto da partida, em segundos'),
+        # ── O formato ────────────────────────────────────────────────────
+        DeclareLaunchArgument('turn_limit', default_value='30.0',
+                              description='teto de um turno, em segundos'),
+        DeclareLaunchArgument('rounds_to_win', default_value='2',
+                              description='2 = melhor de três'),
+        DeclareLaunchArgument('max_rounds', default_value='5'),
+        DeclareLaunchArgument('prep_min', default_value='3.0'),
+        DeclareLaunchArgument('prep_max', default_value='20.0'),
+
+        # A marca de onde todo turno começa. -99 = calcula do campo, e é a
+        # mesma conta nos dois nós. Se divergirem, a IA para num ponto que o
+        # árbitro não aceita e o preparo sempre vai até o teto.
+        DeclareLaunchArgument('home_x', default_value='-99.0'),
+        DeclareLaunchArgument('home_y', default_value='0.0'),
 
         DeclareLaunchArgument('vision_noise', default_value='0.0'),
         DeclareLaunchArgument('vision_delay', default_value='0.0'),
 
-        # Quem publica /game_data: o simulador ou a câmera. É a troca inteira —
-        # os dois publicam a mesma mensagem, então IA, game_master e TV não
-        # sabem qual dos dois está do outro lado.
         DeclareLaunchArgument('use_vision', default_value='false',
                               description='true = câmera, false = simulador'),
         DeclareLaunchArgument('camera', default_value='/dev/video2'),
         DeclareLaunchArgument('vision_port', default_value='8070'),
 
-        # Como o jogador humano entra. No simulador o teclado da GUI publica o
-        # /joy dele; com a câmera esse produtor some junto com o simulador, e
-        # sem uma destas duas opções o visitante fica sem volante.
+        # Para quando JÁ existe uma visão no ar — a que ficou aberta na
+        # calibração, por exemplo. Sem isto o launch sobe um segundo
+        # vision_node, e aí há dois publicadores no /game_data: as posições
+        # passam a alternar entre duas fontes e a taxa dobra, um sintoma que
+        # não aponta para a causa. O aviso da porta 8070 ocupada é a única
+        # pista que aparece, e ela some no meio do log.
+        DeclareLaunchArgument('spawn_vision', default_value='true',
+                              description='false = consome o /game_data de uma '
+                                          'visão que já está rodando'),
+
         DeclareLaunchArgument('use_joy', default_value='false',
-                              description='controle físico para o jogador'),
-        # device_id 0 = o primeiro joystick que o SDL enxergar, seja qual for o
-        # modelo — é o que serve na feira, onde o controle pode ser trocado.
-        # Se houver mais de um plugado, joy_device_name desempata pelo nome que
-        # o SDL dá ao aparelho ('PS4 Controller' para qualquer DualShock 4);
-        # vazio mantém a escolha por device_id.
+                              description='controle físico para o visitante'),
         DeclareLaunchArgument('joy_device_id', default_value='0'),
         DeclareLaunchArgument('joy_device_name', default_value=''),
         DeclareLaunchArgument('deadzone', default_value='0.10'),
         DeclareLaunchArgument('use_keyboard', default_value='false',
                               description='WASD no lugar do controle'),
-        DeclareLaunchArgument('keyboard_id', default_value=LaunchConfiguration('player_id'),
-                              description='qual robô o teclado dirige; o padrão '
-                                          'é o do visitante, para jogar contra a IA'),
 
-        # A outra metade da troca do simulador: com a câmera, ninguém consome
-        # /motorVelocities — no simulador quem consumia era o próprio sim_node.
-        # Fica desligado por padrão porque, sem o Arduino na porta, o nó só
-        # enche o log de erro de serial.
         DeclareLaunchArgument('use_radio', default_value='false',
-                              description='sobe a ponte serial para os robôs'),
+                              description='sobe a ponte serial para o robô'),
         DeclareLaunchArgument('serial_port', default_value='/dev/ttyUSB0'),
         DeclareLaunchArgument('tx_rate_hz', default_value='30.0'),
 
-        LogInfo(msg='[jogo] TV: http://localhost:8090/  |  '
+        LogInfo(msg='[duelo] TV: http://localhost:8090/  |  '
                     'Operador: http://localhost:8090/operador  |  '
                     'Simulador: http://localhost:8080/'),
+        LogInfo(msg=['[duelo] um robô só (id ', robot_id, '), turnos '
+                     'alternados. O volante troca pelo /game/joy_source.']),
 
         Node(
             package='game_master',
@@ -104,9 +141,16 @@ def generate_launch_description():
             name='game_master',
             output='screen',
             parameters=[{
+                'mode': 'duelo',
                 'port': LaunchConfiguration('game_port'),
-                'target_score': LaunchConfiguration('target_score'),
-                'time_limit': LaunchConfiguration('time_limit'),
+                'robot_id': robot_id,
+                'turn_limit': LaunchConfiguration('turn_limit'),
+                'rounds_to_win': LaunchConfiguration('rounds_to_win'),
+                'max_rounds': LaunchConfiguration('max_rounds'),
+                'prep_min': LaunchConfiguration('prep_min'),
+                'prep_max': LaunchConfiguration('prep_max'),
+                'home_x': home_x,
+                'home_y': home_y,
                 'field_length': field_length,
                 'goal_width': goal_width,
                 'difficulty': LaunchConfiguration('difficulty'),
@@ -118,24 +162,32 @@ def generate_launch_description():
             executable='vision_node',
             name='vision_game',
             output='screen',
-            condition=IfCondition(LaunchConfiguration('use_vision')),
+            condition=IfCondition(PythonExpression([
+                "'", LaunchConfiguration('use_vision'), "'.lower() in ('true','1') and ",
+                "'", LaunchConfiguration('spawn_vision'), "'.lower() in ('true','1')",
+            ])),
             parameters=[{
                 'device': LaunchConfiguration('camera'),
                 'port': LaunchConfiguration('vision_port'),
             }],
-            # ver comentário em vision.py: numpy 2.x do user-site quebra o cv2.
             additional_env={'PYTHONNOUSERSITE': '1'},
         ),
 
+        # Um robô só também no simulador: o segundo ficaria parado bem na frente
+        # do gol que os dois motoristas atacam, e o teste mediria outra coisa.
+        # O teclado da GUI entra como o volante do visitante — é o que permite
+        # ensaiar o duelo inteiro sem gamepad e sem robô.
         Node(
             package='simulator',
             executable='sim_node',
             name='simulator',
             output='screen',
             condition=UnlessCondition(LaunchConfiguration('use_vision')),
+            remappings=[(joy_do_robo, '/duelo/joy_humano')],
             parameters=[{
                 'port': LaunchConfiguration('sim_port'),
-                'player_id': LaunchConfiguration('player_id'),
+                'num_robots': 1,
+                'player_id': robot_id,
                 'field_length': field_length,
                 'field_width': field_width,
                 'goal_width': goal_width,
@@ -143,31 +195,31 @@ def generate_launch_description():
                 'wheel_speed_max': wheel_speed_max,
                 'vision_noise': LaunchConfiguration('vision_noise'),
                 'vision_delay': LaunchConfiguration('vision_delay'),
-                # Quem apita é o game_master.
                 'auto_referee': False,
-                # O teclado da GUI, o controle físico e o keyboard_input
-                # publicam no MESMO /joy_N. Quando qualquer um dos outros dois
-                # ocupa a vaga do visitante, o da GUI se cala — senão os zeros
-                # que ele publica a 60 Hz atropelam o comando de verdade e o
-                # robô gagueja sem nada no log explicando por quê.
                 'publish_joy': ParameterValue(
-                    PythonExpression([
-                        "not ('", LaunchConfiguration('use_joy'), "'.lower() in ('true','1') or ",
-                        "('", LaunchConfiguration('use_keyboard'), "'.lower() in ('true','1') and ",
-                        LaunchConfiguration('keyboard_id'), " == ", LaunchConfiguration('player_id'), "))",
-                    ]),
+                    PythonExpression(['not (', volante_externo, ')']),
                     value_type=bool),
             }],
         ),
 
+        # A IA dirige o MESMO robô do visitante. O /ai/home manda ela levá-lo de
+        # volta à marca entre os turnos, inclusive antes do turno do visitante —
+        # é o que tira a mão humana de dentro do campo.
         Node(
             package='ai_player',
             executable='ai_node',
             name='ai_player',
             output='screen',
+            remappings=[(joy_do_robo, '/duelo/joy_ia')],
             parameters=[{
-                'robot_id': LaunchConfiguration('ai_id'),
+                'robot_id': robot_id,
+                # Os presets do jogo não sobrevivem à travessia para o duelo:
+                # sem adversário em campo, o FACIL fica parado no próprio gol e
+                # nunca conclui (medido, 0% em 45 s). Ver PRESETS_DUELO.
+                'preset_set': 'duelo',
                 'difficulty': LaunchConfiguration('difficulty'),
+                'home_x': home_x,
+                'home_y': home_y,
                 'field_length': field_length,
                 'field_width': field_width,
                 'goal_width': goal_width,
@@ -176,43 +228,42 @@ def generate_launch_description():
             }],
         ),
 
-        # Controle físico do visitante. Remapeado para o /joy_N do robô dele —
-        # o `game_controller_node` vem do pacote `joy` do ROS, não deste repo.
+        # O revezamento do volante. ÚNICO publicador do /joy_<robot_id>.
+        Node(
+            package='game_master',
+            executable='turn_mux',
+            name='turn_mux',
+            output='screen',
+            parameters=[{
+                'robot_id': robot_id,
+                'verbose': verbose,
+            }],
+        ),
+
         Node(
             package='joy',
             executable='game_controller_node',
             name='game_controller_node',
             output='screen',
             condition=IfCondition(LaunchConfiguration('use_joy')),
-            remappings=[('/joy', ['/joy_', LaunchConfiguration('player_id')])],
+            remappings=[('/joy', '/duelo/joy_humano')],
             parameters=[{
                 'device_id': LaunchConfiguration('joy_device_id'),
                 'device_name': LaunchConfiguration('joy_device_name'),
                 'deadzone': LaunchConfiguration('deadzone'),
-                # 20 Hz de repetição mantém o Joy vivo mesmo com o jogador
-                # imóvel; é o que o watchdog do joy_aggregator usa para
-                # distinguir "parado" de "controle sumiu".
                 'autorepeat_rate': 20.0,
                 'coalesce_interval_ms': 1,
             }],
         ),
 
-        # O volante do visitante sem gamepad: o keyboard_input entra na vaga do
-        # player_id, a mesma que o use_joy ocuparia. É o caminho para testar
-        # IA contra humano sem depender de controle plugado — e por isso não
-        # faz sentido ligar use_joy e use_keyboard juntos, que é o mesmo erro
-        # de dois produtores no mesmo /joy_N.
-        #
-        # keyboard_id:=0 põe o teclado no robô da IA, para dirigir a IA na mão
-        # e conferir a cinemática — aí desligue a IA antes:
-        #   ros2 topic pub --once /ai/enabled std_msgs/Bool '{data: false}'
         Node(
             package='controller_interpreter',
             executable='keyboard_input',
             name='keyboard_input',
             output='screen',
             condition=IfCondition(LaunchConfiguration('use_keyboard')),
-            parameters=[{'robot_id': LaunchConfiguration('keyboard_id')}],
+            remappings=[(joy_do_robo, '/duelo/joy_humano')],
+            parameters=[{'robot_id': robot_id}],
         ),
 
         Node(
@@ -220,7 +271,7 @@ def generate_launch_description():
             executable='joy_aggregator',
             name='joy_aggregator',
             output='screen',
-            parameters=[{'num_robots': LaunchConfiguration('num_robots')}],
+            parameters=[{'num_robots': 1}],
         ),
 
         Node(

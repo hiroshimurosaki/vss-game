@@ -139,10 +139,21 @@ def classify(banner: str):
     return '?', banner.strip()[:60]
 
 
+#: ttyUSB é CH340 (Nano, Uno clone); ttyACM é o ATmega16U2 do Uno oficial, que a
+#: ponte também pode ser. Varrer só ttyUSB deixava uma ponte em Uno oficial
+#: invisível para o painel — que reporta isso como "ponte não encontrada", ou
+#: seja, igualzinho a rádio quebrado. O reset por DTR funciona nos dois.
+PORTAS_GLOB = ('/dev/ttyUSB*', '/dev/ttyACM*')
+
+
+def portas_seriais():
+    return sorted(p for padrao in PORTAS_GLOB for p in glob.glob(padrao))
+
+
 def detect(baud: int):
-    """Abre todo /dev/ttyUSB*, lê o banner e devolve quem é a ponte e quem é o robô."""
+    """Abre toda serial de placa, lê o banner e diz quem é a ponte e quem é o robô."""
     found = {}
-    for port in sorted(glob.glob('/dev/ttyUSB*')):
+    for port in portas_seriais():
         try:
             fd = open_serial(port, baud)
         except OSError as exc:

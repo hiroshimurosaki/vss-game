@@ -91,6 +91,50 @@ static_assert(MY_ROBOT_ID >= 0 && MY_ROBOT_ID < MAX_ROBOS,
 // desperdiçar corrente nem fazer barulho parado.
 constexpr int PWM_DEADZONE = 25;
 
+// ── Compensação: roda A que não gira para frente ─────────
+// Paliativo para um robô cujo canal A do driver perdeu o sentido "frente" —
+// AIN1 sem contato, meia-ponte queimada, ou o motor travado num sentido. O
+// sintoma que diagnostica isto é bem específico: as duas teclas em que a roda A
+// vai para frente (andar reto para frente, girar para a direita) saem curvando,
+// e as duas em que ela vai para trás (ré, girar para a esquerda) saem perfeitas.
+//
+// Ligue com `./tools/gravar.sh feira --id 1 --roda-a-sem-frente`. Deixe
+// desligado no robô são: a compensação custa a ré, e num robô inteiro isso é
+// perda pura.
+//
+// ISTO NÃO CONSERTA O ROBÔ. Falta um grau de liberdade e nenhum software o
+// devolve; o que dá para fazer é escolher quais movimentos sobrevivem. Ver
+// `compensaRodaA` para o que se ganha e o que se perde.
+#ifndef RODA_A_SEM_FRENTE
+#define RODA_A_SEM_FRENTE 0
+#endif
+
+// ── Compensação: roda A com os fios trocados ─────────────
+// Para um robô que saiu da montagem com os dois fios do motor A invertidos no
+// TB6612 (AO1/AO2). O sintoma não parece fiação: andar para frente e dar ré
+// viram GIRO para lados opostos, porque as duas rodas sempre se opõem. Girar,
+// esse sim, anda reto.
+//
+// O `robot_selftest` NÃO pega isto com o robô suspenso: os motores são montados
+// espelhados nas duas laterais, então "as duas rodas girando" parece certo no
+// ar, e o passo "as duas para frente (robô anda reto)" é justamente o que não
+// se julga sem o robô no chão.
+//
+// Medido em 13/08/2026 no robô 1: com o rádio entregando `PWM_A: 114` positivo
+// (conferido no log do próprio robô, DEBUG_RADIO ligado), a roda A empurrava
+// para trás; a roda B obedecia certo.
+//
+// Ao contrário de RODA_A_SEM_FRENTE, esta compensação NÃO CUSTA NADA: inverter
+// o sinal é exato e os quatro movimentos ficam inteiros. Ainda assim o conserto
+// de verdade é trocar os dois fios no chassi e gravar sem a flag — enquanto ela
+// existir, este é o robô que não anda com o firmware padrão, e isso é uma
+// pegadinha esperando a próxima pessoa que gravar.
+//
+// Ligue com `./tools/gravar.sh feira --id 1 --inverte-roda-a`.
+#ifndef INVERTE_RODA_A
+#define INVERTE_RODA_A 0
+#endif
+
 // ── Command timeout ──────────────────────────────────────
 unsigned long lastCommandTime = 0;
 const unsigned long COMMAND_TIMEOUT = 1000;
@@ -178,12 +222,69 @@ void enableMotors() { digitalWrite(STBY, HIGH); }
 
 void disableMotors() { digitalWrite(STBY, LOW); }
 
+// ── Compensação da roda A ────────────────────────────────
+// Duas transformações, nesta ordem.
+//
+// 1. TROCA A FRENTE DO ROBÔ. Se a roda A só anda para trás, o único movimento
+//    reto que sobra é com as duas rodas para trás — que é justamente a tecla que
+//    ainda funciona hoje. Então passamos a chamar a traseira física de frente:
+//    o robô gira 180°, a roda A vira a da direita, e o sentido inverte. Daí
+//    `(Motor1, Motor2) = (-Motor2, -Motor1)`. Andar para frente volta a andar.
+//
+// 2. SATURA O QUE A RODA NÃO ENTREGA. Depois da troca, o impossível é Motor1
+//    positivo. Pedidos assim são projetados no vizinho viável:
+//
+//      girar para a direita  ->  roda A parada, roda B para trás. Deixa de ser
+//                                giro no próprio eixo e vira pivô sobre a roda
+//                                A — gira mais devagar e ocupa mais espaço, mas
+//                                gira para o lado certo.
+//      ré                    ->  parado. Não existe aproximação honesta de
+//                                "andar reto para lá" com uma roda só; virar
+//                                isso num pivô enganaria quem está no controle,
+//                                que é pior que a tecla não fazer nada.
+//
+// Sobrevivem intactos: andar para frente, girar para a esquerda. Perde-se a ré.
+//
+// ATENÇÃO À CÂMERA. Trocar a frente aqui desalinha o firmware da visão: ela lê
+// a orientação pelo vetor retângulo->quadrado das etiquetas, e o robô passaria a
+// andar 180° fora do que a câmera reporta — a IA e o `game_master` iriam junto.
+// Se este robô for entrar em jogo com visão, GIRE AS ETIQUETAS 180° NO CHASSI
+// junto com esta flag. Para bancada e painel, sem câmera no circuito, não muda
+// nada.
+void compensaRodaA(float &m1, float &m2) {
+  const float trocado1 = -m2;
+  const float trocado2 = -m1;
+
+  if (trocado1 > 0.0f && trocado2 > 0.0f) {
+    m1 = 0.0f;
+    m2 = 0.0f;
+    return;
+  }
+
+  m1 = trocado1 > 0.0f ? 0.0f : trocado1;
+  m2 = trocado2;
+}
+
 // ── Handle received packet ───────────────────────────────
 void handlePacket(const Message &pkt) {
   // Motor1 e Motor2 chegam em [-1.0, 1.0]. O nó ROS já faz o clamp, mas se um
   // pacote corrompido passar pelo checksum o constrain evita PWM absurdo.
-  int speedA = static_cast<int>(pkt.Motor1 * 255.0f);
-  int speedB = static_cast<int>(pkt.Motor2 * 255.0f);
+  float m1 = pkt.Motor1;
+  float m2 = pkt.Motor2;
+
+  // Vem antes de qualquer outra compensação: as demais raciocinam sobre o
+  // sentido REAL da roda ("a roda A não vai para frente"), então precisam do
+  // sinal já normalizado para não decidir pelo avesso.
+#if INVERTE_RODA_A
+  m1 = -m1;
+#endif
+
+#if RODA_A_SEM_FRENTE
+  compensaRodaA(m1, m2);
+#endif
+
+  int speedA = static_cast<int>(m1 * 255.0f);
+  int speedB = static_cast<int>(m2 * 255.0f);
 
   speedA = constrain(speedA, -255, 255);
   speedB = constrain(speedB, -255, 255);
@@ -256,6 +357,21 @@ void setup() {
   Serial.print(" | endereço: ");
   Serial.println((const char *)ENDERECOS[MY_ROBOT_ID]);
   Serial.println(radio.isChipConnected() ? "radio OK" : "radio FAIL");
+
+#if RODA_A_SEM_FRENTE
+  // No banner de propósito: sem isto, um robô gravado com a compensação vira,
+  // meses depois, um "robô que não dá ré" sem nada no código que explique.
+  // O `gravar.sh` lê os banners no fim, então o aviso aparece na hora de gravar.
+  Serial.println("COMPENSACAO: roda A sem frente (frente trocada, SEM re)");
+#endif
+
+#if INVERTE_RODA_A
+  // Pelo mesmo motivo do aviso acima, e aqui ainda mais: esta compensação não
+  // tira nada, então um robô gravado com ela se comporta perfeitamente — e é
+  // exatamente por isso que ninguém desconfia dela quando o robô, regravado sem
+  // a flag, volta a girar no lugar do nada.
+  Serial.println("COMPENSACAO: roda A invertida (fios trocados no chassi)");
+#endif
 
 #if DEBUG_RADIO
   Serial.print("sizeof(Message): ");
