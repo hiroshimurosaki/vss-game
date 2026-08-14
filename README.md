@@ -67,8 +67,7 @@ que é o item 1.
    `use_joy:=true` sobe o nó e foi verificado, mas sem hardware na porta.
 
 Comandos do dia a dia: [`CHEATSHEET.md`](CHEATSHEET.md). Mapa dos nós e
-invariantes: [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md). Ligação do robô:
-[`docs/robo-vss.svg`](docs/robo-vss.svg).
+invariantes: [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md).
 
 ## Arquitetura
 
@@ -77,29 +76,48 @@ em `/joy_0` e desce pelo mesmo pipeline do jogador humano. Isso mantém um só c
 código entre a decisão e o motor — o que a IA faz é indistinguível, para o resto do
 sistema, de alguém segurando um controle.
 
+```mermaid
+flowchart TD
+    cam(["câmera"]) --> vision["vision_game"]
+    pad(["controle do jogador"]) --> gcn["game_controller_node"]
+
+    vision -->|"/game_data"| ai["ai_player<br/>robô 0"]
+    vision -->|"/game_data"| gm["game_master"]
+
+    ai -->|"/joy_0 · Joy sintético"| agg["joy_aggregator"]
+    gcn -->|"/joy_1 · robô 1"| agg
+
+    agg -->|"/joy_list"| dir["direction"]
+    agg -->|"/joy_list"| spc["special_controls"]
+
+    dir -->|"/direction"| cin["cinematica"]
+    spc -->|"/actions"| cin
+
+    cin -->|"/motorVelocities"| rcom["radio_communication"]
+    rcom -->|"serial 115200"| tx["tx_bridge"]
+    tx -->|"nRF24"| rx["robot_rx ×N"]
+
+    gm -.->|"/ai/enabled · a coleira"| ai
+    gm -->|"WebSocket"| tv(["TV e operador · :8090"])
+
+    classDef io fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
+    classDef ia fill:#fce7f3,stroke:#be185d,color:#500724
+    classDef comum fill:#dbeafe,stroke:#1d4ed8,color:#172554
+    classDef hw fill:#fee2e2,stroke:#b91c1c,color:#450a0a
+    classDef fonte fill:#dcfce7,stroke:#15803d,color:#052e16
+    classDef arbitro fill:#fef3c7,stroke:#b45309,color:#451a03
+
+    class cam,pad io
+    class ai ia
+    class agg,dir,spc,cin comum
+    class rcom,tx,rx hw
+    class vision,gcn fonte
+    class gm,tv arbitro
 ```
-  câmera                                controle do jogador
-     │                                          │
- vision_game                            game_controller_node
-     │ /game_data                               │
-     ├──────────► ai_player ──/joy_0──┐         │
-     │             (robô 0)  sintético│         │ /joy_1  (robô 1)
-     │                ▲               │         │
-     │                │               └────┬────┘
-     │          /ai/enabled            joy_aggregator
-     │                │                    │ /joy_list
-     │                │        ┌───────────┴───────────┐
-     │                │  direction              special_controls
-     │                │  /direction                 /actions
-     │                │        └───────────┬───────────┘
-     │                │                cinematica
-     │                │                    │ /motorVelocities
-     │                │            radio_communication
-     │                │                    │ serial 115200
-     │                │                tx_bridge ──nRF24──► robot_rx (×N)
-     │                │
-     └──► game_master ┘──WebSocket──► TV e operador (:8090)
-```
+
+Em azul, o **caminho comum**: tudo entre o `joy_aggregator` e a `cinematica` é o
+mesmo código para a IA e para o humano. É o que faz "mexeu na cinemática, mexeu
+para os dois" ser verdade.
 
 `/ai/enabled` é a coleira: o `game_master` só libera a IA no estado `JOGANDO`.
 Fora da partida ela manda zero, e `/motorVelocities` fica zerado — é o
@@ -109,10 +127,66 @@ O mapa completo de tópicos, tipos e invariantes está em [`docs/ARQUITETURA.md`
 
 ## O robô
 
-<img src="docs/robo-vss.svg" alt="Diagrama de ligação do robô VSS, pino a pino" width="100%">
+```mermaid
+flowchart TD
+    subgraph fonte["① FONTE DE ENERGIA"]
+        direction LR
+        cel1["Célula 1<br/>18650 · 3.7 V · 2600 mAh"]
+        cel2["Célula 2<br/>18650 · 3.7 V · 2600 mAh"]
+        bms["BMS 2S · HX-2S-D20"]
+        chave["Chave geral<br/>MTS-102 ON-ON<br/>perna livre = NC"]
+        cel1 -->|"série"| bms
+        cel2 -->|"série"| bms
+        bms -->|"P+ · JST 4 vias"| chave
+    end
 
-Fonte editável em [`docs/robo-vss.excalidraw`](docs/robo-vss.excalidraw). O
-diagrama da ponte do lado do PC é o [`docs/ponte-uno-nrf24.excalidraw`](docs/ponte-uno-nrf24.excalidraw).
+    subgraph controle["② CONTROLE"]
+        direction LR
+        nano["Arduino Nano · CH340"]
+        radio["nRF24L01 · PCB, sem antena<br/>CE=D6 · CSN=D10<br/>SCK=D13 · MOSI=D11 · MISO=D12<br/>VCC=3V3 · IRQ não conectado"]
+        cap100["100 µF<br/>soldado nos pinos do módulo"]
+        nano -->|"SPI + CE/CSN + 3V3"| radio
+        cap100 -.-> radio
+    end
+
+    subgraph potencia["③ POTÊNCIA"]
+        direction LR
+        drv["TB6612FNG · ponte dupla<br/>STBY=D2<br/>AIN1=D4 · AIN2=D3 · PWMA=D5<br/>BIN1=D7 · BIN2=D8 · PWMB=D9<br/>VCC=5V · VM=7.4 V"]
+        cap1000["1000 µF bulk"]
+        cap1000 -.-> drv
+    end
+
+    subgraph motores["④ MOTORES"]
+        direction LR
+        motA["Motor A · roda esquerda<br/>capacitor 103"]
+        motB["Motor B · roda direita<br/>capacitor 103"]
+        motA ~~~ motB
+    end
+
+    chave -->|"7.4 V → VIN"| nano
+    chave -->|"7.4 V → VM"| drv
+    nano -->|"5V + 7 sinais"| drv
+    drv -->|"A01 A02"| motA
+    drv -->|"B01 B02"| motB
+
+    classDef pwr fill:#fee2e2,stroke:#b91c1c,color:#450a0a
+    classDef mcu fill:#dbeafe,stroke:#1d4ed8,color:#172554
+    classDef rf fill:#fef3c7,stroke:#b45309,color:#451a03
+    classDef mot fill:#f1f5f9,stroke:#475569,color:#0f172a
+
+    class cel1,cel2,bms,chave,cap1000,drv pwr
+    class nano mcu
+    class radio,cap100 rf
+    class motA,motB mot
+```
+
+O `GND` é comum aos quatro blocos, e o diagnóstico recomenda um **ponto-estrela
+único**: terra em cadeia entre motor, Nano e rádio faz a corrente do motor passar
+pelo terra do rádio.
+
+Fonte editável em [`docs/robo-vss.excalidraw`](docs/robo-vss.excalidraw), que é o
+desenho original com o traçado pino a pino. O diagrama da ponte do lado do PC é o
+[`docs/ponte-uno-nrf24.excalidraw`](docs/ponte-uno-nrf24.excalidraw).
 
 ### Lista de material, por robô
 
@@ -134,16 +208,32 @@ A saída da chave é um nó só de 7.4 V, e dele saem dois ramos: o `VIN` do Nan
 `VM` do driver. O Nano regula o resto internamente — `5V` alimenta a lógica do
 TB6612 e `3V3` alimenta o rádio.
 
+```mermaid
+flowchart TD
+    pack["pack 2S<br/><b>7.4 V</b>"] --> bms["BMS HX-2S-D20"]
+    bms -->|"P+"| chave["chave MTS-102"]
+    bms -->|"P−"| gnd(["GND comum<br/>ponto-estrela"])
+
+    chave --> no7v4{{"nó de 7.4 V"}}
+    no7v4 -->|"VIN"| nano["Arduino Nano"]
+    no7v4 -->|"VM"| drv["TB6612FNG"]
+
+    nano -->|"5V · regulado"| logica["VCC do TB6612<br/><i>lógica</i>"]
+    nano -->|"3V3 · regulado"| rf["VCC do nRF24"]
+    drv --> mot(["motores"])
+
+    classDef bruta fill:#fee2e2,stroke:#b91c1c,color:#450a0a
+    classDef reg fill:#dbeafe,stroke:#1d4ed8,color:#172554
+    classDef terra fill:#f1f5f9,stroke:#475569,color:#0f172a
+
+    class pack,bms,chave,no7v4,drv,mot bruta
+    class nano,logica,rf reg
+    class gnd terra
 ```
-célula 1  3.7V ──┐   ┌──────────────────┐
-                 ├───┤ BMS  HX-2S-D20   │
-célula 2  3.7V ──┘   └── P+ ──── P− ────┘
-                          │       │
-              chave MTS-102 (COM) │        ┌── VIN ── Arduino Nano ──┬── 5V  ─► VCC  (lógica do TB6612)
-                          └───────┼── 7.4V ┤                         └── 3V3 ─► VCC  (nRF24)
-                                  │        └── VM  ── TB6612FNG ─────► motores
-                                 GND
-```
+
+Em vermelho, os 7.4 V direto da bateria; em azul, o que o Nano regula. Nenhum
+regulador extra na placa — é o Nano que sustenta o rádio, e é por isso que o
+`3V3` dele é o trilho mais frágil do robô.
 
 ### Pinagem
 
