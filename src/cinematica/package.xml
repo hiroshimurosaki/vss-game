@@ -3,9 +3,10 @@
 <package format="3">
   <name>cinematica</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="arthurarg100@gmail.com">arthur</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Cinemática inversa do robô diferencial: direção e ações viram velocidade de cada roda</description>
+  <maintainer email="fernando.murusaki@unesp.br">Carrossel Caipira</maintainer>
+  <license>MIT</license>
+  <author>Arthur</author>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

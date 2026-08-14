@@ -3,9 +3,10 @@
 <package format="3">
   <name>shared_interfaces</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="arthurarg100@gmail.com">arthur</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Mensagens ROS compartilhadas por todos os nós do projeto</description>
+  <maintainer email="fernando.murusaki@unesp.br">Carrossel Caipira</maintainer>
+  <license>MIT</license>
+  <author>Arthur</author>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
