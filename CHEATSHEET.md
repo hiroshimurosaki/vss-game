@@ -77,6 +77,47 @@ Tempo do Franky até o gol, medido: **FÁCIL 19 s · MÉDIO 11 s · DIFÍCIL 6 s
 (medianas). Escolha o preset que deixa ele um pouco acima da média das
 primeiras pessoas — e meça de novo se trocar de campo.
 
+### Se a câmera não estiver funcionando
+
+Modo **X1**: duas pessoas, dois robôs, dois controles, melhor de três. É o único
+modo que roda com o campo cego — sem visão não há IA, mas nada disso é preciso
+quando os dois lados são gente. **Quem apita o gol é você**, no painel.
+
+```bash
+ros2 launch startup x1.py serial_port:=$(./tools/porta.sh)
+```
+
+O round acaba no **primeiro gol**, ou no teto de 90 s (aí empata e ninguém
+pontua). Ganha a partida quem fizer **dois rounds**. O tempo que vai para o
+placar do dia é o **melhor round que a pessoa venceu** — não a soma, não o
+último.
+
+No operador: dois campos de nome, `Enter` no segundo começa. Teclas `1` gol
+do A, `2` gol do B, `3` round sem gol (bola sumiu, robô travou), `espaço` pausa,
+`R` chama os dois no telão.
+
+Os lados seguem a convenção que o projeto já usa: **A é o robô 1** e ataca o gol
+da **esquerda** — o mesmo lado e a mesma cor do visitante no modo clássico. **B
+é o robô 0**, ataca a **direita** e herda o lugar (e o magenta) que era da IA.
+Entregue os controles nessa ordem e as telas contam a história certa.
+
+O lado do gol só tem efeito quando existe visão. Com o campo cego, quem marca é
+o botão do painel — e aí o que importa é só não trocar os controles.
+
+O placar guarda uma linha por partida, com os dois nomes, e fica em
+`~/.vss-game/highscores_x1.json` — arquivo separado, porque tempo de X1 e tempo
+de partida clássica não são a mesma grandeza.
+
+```bash
+ros2 launch startup x1.py round_limit:=60.0 rounds_to_win:=3
+./tools/x1_bench.py                 # as regras, sem ROS — 10 casos
+node tools/mock_ui.mjs              # as telas no navegador, sem ROS nenhum
+```
+
+O `mock_ui.mjs` serve as telas com dados de mentira, uma cena por estado
+(`/x1?cena=fim`, `/operador?cena=jogando`). Serve para conferir layout numa
+máquina sem ROS — inclusive Windows, que só precisa do Node.
+
 **Parar tudo:**
 
 ```bash
