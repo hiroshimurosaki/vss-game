@@ -15,7 +15,7 @@ POR QUE NÃO É UM `rqt_graph`
     Um visualizador de grafo mostra o que existe. Para depurar, o que importa é
     o que DEVERIA existir e não está: o tópico que ninguém publica, o nó que
     morreu, o assinante que sumiu. Isso exige a topologia certa escrita em
-    algum lugar — está em `topologia.py`, espelhando o `CLAUDE.md`.
+    algum lugar — está em `topologia.py`, espelhando o `docs/ARQUITETURA.md`.
 
 POR QUE É UM NÓ SEPARADO E NÃO PARTE DO `game_master`
     Porque uma das falhas que ele precisa reportar é o `game_master` estar

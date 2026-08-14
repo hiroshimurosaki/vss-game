@@ -295,7 +295,7 @@
   --danger: #F2685C;
 
   /* Identidade dos dois lados do campo. A convenção do projeto inteiro é
-     robô 0 = IA = esquerda, robô 1 = visitante = direita (ver CLAUDE.md).
+     robô 0 = IA = esquerda, robô 1 = visitante = direita (ver docs/ARQUITETURA.md).
      Estes dois tokens são a tradução dela em cor. */
   --ia:        var(--magenta);
   --visitante: var(--ciano);

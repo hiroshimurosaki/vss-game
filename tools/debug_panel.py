@@ -660,7 +660,7 @@ def diagnose(st, robot_present, bridge_present):
     elif rx_cks > 1 and rx_ok < 1:
         add('robô aceita o pacote', BAD, f'{rx_cks:.0f} checksums ruins/s',
             'Pacote corrompido no ar ou struct diferente entre os três lugares '
-            'do protocolo. Ver contrato 2 no CLAUDE.md.')
+            'do protocolo. Ver contrato 2 no docs/ARQUITETURA.md.')
     elif rx_sb > 1 and rx_ok < 1:
         add('robô aceita o pacote', BAD, f'{rx_sb:.0f} start bytes inválidos/s',
             'START_BYTE diferente entre ROS, ponte e robô.')

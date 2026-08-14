@@ -5,7 +5,7 @@ As três letras do manual da marca, recortadas para a web. Gere de novo com
 
 Ficam versionadas no repositório de propósito: a feira não tem rede garantida,
 e fonte que não carrega derruba a identidade do telão na hora errada. São
-82 KB no total — menos que um único frame do vídeo da calibração.
+89 KB no total — menos que um único frame do vídeo da calibração.
 
 | arquivo | face | papel |
 |---|---|---|
@@ -13,6 +13,7 @@ e fonte que não carrega derruba a identidade do telão na hora errada. São
 | `sans-regular.woff2` | Poppins 400 | corpo de texto |
 | `sans-semibold.woff2` | Poppins 600 | título, rótulo |
 | `sans-bold.woff2` | Poppins 700 | ênfase |
+| `sans-black.woff2` | Poppins 900 | número do placar, lido a dez metros |
 | `mono-medium.woff2` | Fira Mono Medium | telemetria, tópicos ROS, números de ferramenta |
 
 **A Advent Pro é uma fonte variável e é usada como tal.** Um arquivo de 49 KB
@@ -41,7 +42,7 @@ desenha o placar.
 
 Todas sob a **SIL Open Font License 1.1**, que permite redistribuir os arquivos.
 Os textos estão aqui do lado: `OFL-AdventPro.txt`, `OFL-Poppins.txt`,
-`OFL-FiraSans.txt`. <https://openfontlicense.org>
+`OFL-Fira.txt`. <https://openfontlicense.org>
 
 Origem: Advent Pro e Poppins do material de identidade da equipe / Google Fonts;
 Fira Mono de `/usr/share/fonts/opentype/fira` (pacote Debian `fonts-firacode`).

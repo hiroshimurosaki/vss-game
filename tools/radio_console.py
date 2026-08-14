@@ -467,7 +467,7 @@ def main():
         else:
             sys.exit(f'sem serial: nem {port} nem {candidatos} existem.\n'
                      'A ponte está ligada? No Pop!_OS o brltty pode roubar o '
-                     'CH340 — ver CLAUDE.md.')
+                     'CH340 — ver docs/ARQUITETURA.md.')
 
     print(f'abrindo {port} a {args.baud} (o Nano reseta ao abrir, aguardando 2s)')
     fd = open_serial(port, args.baud)

@@ -173,6 +173,8 @@ arduino-cli upload -p $PONTE --fqbn $FQBN firmware/tx_bridge # grava
 | `firmware/tx_bridge` | ponte (PC) | **o da feira** — broadcast, sem auto-ACK |
 | `firmware/tx_probe` | ponte (PC) | diagnóstico — reporta entrega, um robô só |
 | `firmware/robot_rx` | robô | receptor deste repo |
+| `firmware/robot_selftest` | robô | bancada — comandos pelo serial, afere fiação e PWM mínimo |
+| `firmware/robot_forward` | robô | rodas para frente sem parar, sem rádio — aferir `wheel_speed_max` |
 
 **Use sempre o caminho `by-id` da ponte.** Só ela tem número de série; com dois
 Arduinos plugados, `/dev/ttyUSB0` pode ser o outro.

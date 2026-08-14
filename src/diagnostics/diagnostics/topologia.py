@@ -5,7 +5,7 @@ ROS mostra **o que existe**; para depurar, o que importa é **o que deveria
 existir e não está**. Só dá para dizer isso quando a topologia certa está
 escrita em algum lugar, e é aqui.
 
-Espelha o desenho do `CLAUDE.md`. Se os dois divergirem, um dos dois está
+Espelha o desenho do `docs/ARQUITETURA.md`. Se os dois divergirem, um dos dois está
 errado — e é bom que quebre visível.
 
 Cada elo carrega quatro coisas que um `ros2 topic hz` não dá:
